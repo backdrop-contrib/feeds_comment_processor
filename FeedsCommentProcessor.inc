@@ -123,13 +123,11 @@ class FeedsCommentProcessor extends FeedsProcessor {
    * Override parent::configDefaults().
    */
   public function configDefaults() {
-    return array(
-      'input_format' => filter_default_format(),
-      'update_existing' => FEEDS_SKIP_EXISTING,
-      'expire' => FEEDS_EXPIRE_NEVER,
-      'mappings' => array(),
-      'author' => 0,
-    );
+    $defaults = parent::configDefaults();
+    $defaults['input_format'] = filter_default_format();
+    $defaults['expire'] = FEEDS_EXPIRE_NEVER;
+    $defaults['author'] = 0;
+    return $defaults;
   }
 
   /**
