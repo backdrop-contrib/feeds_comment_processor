@@ -245,7 +245,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
       ),
       'status' => array(
         'name' => t('Published status'),
-        'description' => t('The published status of a comment. (0 = Published, 1 = Not Published)'),
+        'description' => t('The published status of a comment. (0 = Not Published, 1 = Published)'),
       ),
       'name' => array(
         'name' => t('Name'),
