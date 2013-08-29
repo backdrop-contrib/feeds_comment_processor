@@ -32,6 +32,7 @@ function feeds_comment_processor_schema() {
         'unsigned' => TRUE,
         'not null' => TRUE,
         'description' => "Node id of the owner feed, if available.",
+        'default' => 0,
       ),
       'imported' => array(
         'type' => 'int',
