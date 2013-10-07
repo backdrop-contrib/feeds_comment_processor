@@ -82,9 +82,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
   public function entitySave($comment) {
     $comment->date = date('r', $comment->created);
     // Trim the subject if it is too long.
-    if (strlen($comment->subject) > 29) {
-      $comment->subject = truncate_utf8(strip_tags($comment->subject), 29, TRUE);
-    }
+    $comment->subject = truncate_utf8(strip_tags($comment->subject), 64, TRUE, TRUE);
     comment_submit($comment);
     comment_save($comment);
   }
