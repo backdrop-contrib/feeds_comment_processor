@@ -196,6 +196,14 @@ class FeedsCommentProcessor extends FeedsProcessor {
    */
   public function setTargetElement(FeedsSource $source, $target_comment, $target_element, $value) {
     switch ($target_element) {
+      case 'nid_by_guid':
+        $target_comment->nid = db_select('feeds_item', 'f')
+          ->fields('f', array('entity_id'))
+          ->condition('entity_type', 'node')
+          ->condition('guid', $value)
+          ->execute()
+          ->fetchField();
+        break;
       case 'comment':
         $target_comment->comment_body[$target_comment->language][0]['value'] = $value;
         break;
@@ -220,6 +228,10 @@ class FeedsCommentProcessor extends FeedsProcessor {
       'nid' => array(
         'name' => t('Node ID'),
         'description' => t('The nid to which this comment is a reply.'),
+      ),
+      'nid_by_guid' => array(
+        'name' => t('Node ID by GUID'),
+        'description' => t('The node to which this comment is a reply, looked up by the GUID of a previous import.'),
       ),
       'uid' => array(
         'name' => t('User ID'),
