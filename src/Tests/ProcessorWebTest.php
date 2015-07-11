@@ -188,4 +188,59 @@ class ProcessorWebTest extends \FeedsWebTestCase {
     $this->assertEqual('plain_text', $comment->comment_body[LANGUAGE_NONE][0]['format']);
   }
 
+  /**
+   * Tests mapping to the parent id.
+   */
+  public function testParentId() {
+    $this->addMappings('comment', array(
+      5 => array(
+        'source' => 'guid',
+        'target' => 'guid',
+      ),
+    ));
+
+    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
+    $nid = $this->createFeedNode('comment', $url, 'Comment test');
+
+    $this->assertText('Created 1 comment');
+
+    $this->removeMappings('comment', array(
+      1 => array(
+        'source' => 'guid',
+        'target' => 'nid_by_guid',
+      ),
+      5 => array(
+        'source' => 'guid',
+        'target' => 'guid',
+      ),
+    ));
+
+    $this->addMappings('comment', array(
+      4 => array(
+        'source' => 'title',
+        'target' => 'nid_by_title',
+      ),
+      5 => array(
+        'source' => 'guid',
+        'target' => 'pid_by_guid',
+      ),
+    ));
+
+    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test2.csv';
+    $edit = array(
+      'feeds[FeedsHTTPFetcher][source]' => $url,
+    );
+    $this->drupalPost("node/$nid/edit", $edit, 'Save');
+    $this->drupalPost("node/$nid/import", array(), 'Import');
+    $this->assertText('Created 1 comment.');
+
+    $comment = comment_load(2);
+    $this->assertEqual(1, $comment->pid);
+    $this->assertEqual(2, $comment->cid);
+    $this->assertEqual(1, $comment->nid);
+    $this->assertEqual(1, $comment->status);
+    $this->assertEqual('test subject 2', $comment->subject);
+    $this->assertEqual('01.00/', $comment->thread);
+  }
+
 }

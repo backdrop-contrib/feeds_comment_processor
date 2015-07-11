@@ -237,6 +237,18 @@ class FeedsCommentProcessor extends FeedsProcessor {
           ->fetchField();
         break;
 
+      case 'pid_by_guid':
+        $target_comment->pid = (int) db_select('feeds_item', 'f')
+          ->fields('f', array('entity_id'))
+          ->condition('entity_type', 'comment')
+          ->condition('id', $this->id)
+          ->condition('feed_nid', $source->feed_nid)
+          ->condition('guid', $value)
+          ->range(0, 1)
+          ->execute()
+          ->fetchField();
+        break;
+
       case 'created':
       case 'changed':
         $target_comment->$target_element = feeds_to_unixtime($value, REQUEST_TIME);
@@ -286,6 +298,10 @@ class FeedsCommentProcessor extends FeedsProcessor {
       'pid' => array(
         'name' => t('Parent ID'),
         'description' => t('The cid to which this comment is a reply.'),
+      ),
+      'pid_by_guid' => array(
+        'name' => t('Parent ID by GUID'),
+        'description' => t('The comment to which this comment is a reply, looked up by the GUID of a previous import.'),
       ),
       'thread' => array(
         'name' => t('Thread structure'),
