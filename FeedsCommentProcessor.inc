@@ -134,49 +134,9 @@ class FeedsCommentProcessor extends FeedsProcessor {
   /**
    * {@inheritdoc}
    */
-  public function expire(FeedsSource $source, $time = NULL) {
-    $state = $source->state(FEEDS_PROCESS_EXPIRE);
-
-    if ($time === NULL) {
-      $time = $this->expiryTime();
-    }
-    if ($time == FEEDS_EXPIRE_NEVER) {
-      return;
-    }
-
-    $select = $this->expiryQuery($source, $time);
-
-    // If there is no total, query it.
-    if (!$state->total) {
-      $state->total = $select->countQuery()->execute()->fetchField();
-    }
-
-    // Delete a batch of entities.
-    $entity_ids = $select->range(0, $this->getLimit())->execute()->fetchCol();
-    if ($entity_ids) {
-      $this->entityDeleteMultiple($entity_ids);
-      $state->deleted += count($entity_ids);
-      $state->progress($state->total, $state->deleted);
-    }
-    else {
-      $state->progress($state->total, $state->total);
-    }
-  }
-
-  /**
-   * {@inheritdoc}
-   */
   protected function expiryQuery(FeedsSource $source, $time) {
-    // Build base select statement.
-    $select = db_select('comment', 'c');
-    $select->addField('c', 'cid');
-    $select->condition('c.created', REQUEST_TIME - $time, '<');
-
-    $select->join('feeds_item', 'fi', 'c.cid = fi.entity_id');
-
-    $select->condition('fi.entity_type', 'comment');
-    $select->condition('fi.id', $this->id);
-    $select->condition('fi.feed_nid', $source->feed_nid);
+    $select = parent::expiryQuery($source, $time);
+    $select->condition('e.created', REQUEST_TIME - $time, '<');
 
     return $select;
   }
