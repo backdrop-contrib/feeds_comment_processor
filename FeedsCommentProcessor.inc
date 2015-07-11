@@ -40,8 +40,9 @@ class FeedsCommentProcessor extends FeedsProcessor {
     $comment->name = $account->name;
     $comment->node_type = !empty($this->config['bundle']) ? $this->config['bundle'] : NULL;
     $comment->hostname = '127.0.0.1';
-    $comment->created = FEEDS_REQUEST_TIME;
-    $comment->date = FEEDS_REQUEST_TIME;
+    $comment->created = REQUEST_TIME;
+    $comment->changed = REQUEST_TIME;
+    $comment->date = REQUEST_TIME;
     $comment->is_anonymous = 0;
     $comment->status = 0;
     $comment->language = LANGUAGE_NONE;
@@ -70,10 +71,18 @@ class FeedsCommentProcessor extends FeedsProcessor {
    * {@inheritdoc}
    */
   public function entitySave($comment) {
+    // comment_submit() overrides the created and changed properties.
+    $created = $comment->created;
+    $changed = $comment->changed;
+
+    comment_submit($comment);
+
+    $comment->created = $created;
+    $comment->changed = $changed;
     $comment->date = date('r', $comment->created);
     // Trim the subject if it is too long.
-    $comment->subject = truncate_utf8(strip_tags($comment->subject), 64, TRUE, TRUE);
-    comment_submit($comment);
+    $comment->subject = truncate_utf8(trim(strip_tags($comment->subject)), 64, TRUE, TRUE);
+
     comment_save($comment);
   }
 
@@ -211,6 +220,11 @@ class FeedsCommentProcessor extends FeedsProcessor {
         $target_comment->comment_body[$target_comment->language][0]['value'] = $value;
         break;
 
+      case 'created':
+      case 'changed':
+        $target_comment->$target_element = feeds_to_unixtime($value, REQUEST_TIME);
+        break;
+
       default:
         parent::setTargetElement($source, $target_comment, $target_element, $value);
         break;
@@ -252,7 +266,11 @@ class FeedsCommentProcessor extends FeedsProcessor {
       ),
       'created' => array(
         'name' => t('Published date'),
-        'description' => t('The UNIX time when a comment has been saved.'),
+        'description' => t('The time when a comment was saved.'),
+      ),
+      'changed' => array(
+        'name' => t('Updated date'),
+        'description' => t('The time when a comment was updated.'),
       ),
       'status' => array(
         'name' => t('Published status'),
