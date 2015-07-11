@@ -57,6 +57,10 @@ class ProcessorWebTest extends \FeedsWebTestCase {
           'source' => 'status',
           'target' => 'status',
         ),
+        4 => array(
+          'source' => 'hostname',
+          'target' => 'hostname',
+        ),
       )
     );
 
@@ -86,6 +90,7 @@ class ProcessorWebTest extends \FeedsWebTestCase {
 
     $comment = comment_load(1);
     $this->assertEqual('test subject', $comment->subject);
+    $this->assertEqual('example.com', $comment->hostname);
     $this->assertEqual('test body text', $comment->comment_body[LANGUAGE_NONE][0]['value']);
     $this->assertEqual('plain_text', $comment->comment_body[LANGUAGE_NONE][0]['format']);
   }
@@ -109,7 +114,7 @@ class ProcessorWebTest extends \FeedsWebTestCase {
     // // Adding a mapping to the user_name will invoke authorization.
     $this->addMappings('comment',
       array(
-        4 => array(
+        5 => array(
           'source' => 'mail',
           'target' => 'user_mail',
         ),

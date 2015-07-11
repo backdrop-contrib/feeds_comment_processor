@@ -67,7 +67,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
 
     $this->prepareCommentSubject($comment);
 
-    foreach (array('uid', 'name', 'mail') as $key) {
+    foreach (array('uid', 'name', 'mail', 'hostname') as $key) {
       $comment->$key = trim($comment->$key);
     }
 
@@ -111,7 +111,16 @@ class FeedsCommentProcessor extends FeedsProcessor {
    * {@inheritdoc}
    */
   public function entitySave($comment) {
+    // Trick ip_address() to return the ip address mapped to the comment.
+    $prev_ip = ip_address();
+    $ip_address = &drupal_static('ip_address');
+
+    // Set the ip address to the comment hostname.
+    $ip_address = $comment->hostname;
     comment_save($comment);
+
+    // Restore the previous ip.
+    $ip_address = $prev_ip;
   }
 
   /**
