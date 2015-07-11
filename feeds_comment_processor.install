@@ -68,3 +68,10 @@ function feeds_comment_processor_update_7102() {
     db_drop_table('feeds_comment_item');
   }
 }
+
+/**
+ * Delete the feeds_comment_batch_size variable.
+ */
+function feeds_comment_processor_update_7103() {
+  variable_del('feeds_comment_batch_size');
+}

@@ -2,17 +2,8 @@
 
 /**
  * @file
- * Class definition of FeedsCommentProcessor.
+ * Contains FeedsCommentProcessor.
  */
-
-// Create or delete FEEDS_COMMENT_BATCH_SIZE at a time.
-define('FEEDS_COMMENT_BATCH_SIZE', 50);
-
-// Deprecated. Use FEEDS_SKIPE_EXISTING, FEEDS_REPLACE_EXISTNG,
-// FEEDS_UPDATE_EXISTING instead.
-define('FEEDS_COMMENT_SKIP_EXISTING', 0);
-define('FEEDS_COMMENT_REPLACE_EXISTING', 1);
-define('FEEDS_COMMENT_UPDATE_EXISTING', 2);
 
 /**
  * Creates comments from feed items.
