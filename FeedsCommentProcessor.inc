@@ -53,11 +53,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
     $comment->status = 0;
     $comment->language = LANGUAGE_NONE;
     $comment->comment_body[$comment->language][0]['format'] = $this->config['input_format'];
-    $comment->feeds_comment_item = new stdClass();
-    $comment->feeds_comment_item->id = $this->id;
-    $comment->feeds_comment_item->imported = FEEDS_REQUEST_TIME;
-    $comment->feeds_comment_item->feed_nid = $source->feed_nid;
-    $comment->feeds_comment_item->guid = '';
+
     return $comment;
   }
 
@@ -96,23 +92,53 @@ class FeedsCommentProcessor extends FeedsProcessor {
   }
 
   /**
-   * Implement expire().
+   * {@inheritdoc}
    */
   public function expire(FeedsSource $source, $time = NULL) {
+    $state = $source->state(FEEDS_PROCESS_EXPIRE);
+
     if ($time === NULL) {
       $time = $this->expiryTime();
     }
     if ($time == FEEDS_EXPIRE_NEVER) {
       return;
     }
-    $result = db_query_range("SELECT c.cid FROM {comment} c INNER JOIN {feeds_comment_item} fci ON c.cid = fci.cid WHERE fci.id = :id AND c.created < :timestamp", 0, variable_get('feeds_comment_batch_size', FEEDS_COMMENT_BATCH_SIZE), array(':id' => $this->id, ':timestamp' => FEEDS_REQUEST_TIME - $time));
-    while ($comment = db_fetch_object($result)) {
-      comment_delete($comment->cid);
+
+    $select = $this->expiryQuery($source, $time);
+
+    // If there is no total, query it.
+    if (!$state->total) {
+      $state->total = $select->countQuery()->execute()->fetchField();
     }
-    if (db_result(db_query_range("SELECT c.cid FROM {comment} c INNER JOIN {feeds_comment_item} fci ON c.cid = fci.cid WHERE fci.id = :id AND c.created < :timestamp", 0, 1, array(':id' => $this->id, ':timestamp' => FEEDS_REQUEST_TIME - $time)))) {
-      return FEEDS_BATCH_ACTIVE;
+
+    // Delete a batch of entities.
+    $entity_ids = $select->range(0, $this->getLimit())->execute()->fetchCol();
+    if ($entity_ids) {
+      $this->entityDeleteMultiple($entity_ids);
+      $state->deleted += count($entity_ids);
+      $state->progress($state->total, $state->deleted);
     }
-    return FEEDS_BATCH_COMPLETE;
+    else {
+      $state->progress($state->total, $state->total);
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function expiryQuery(FeedsSource $source, $time) {
+    // Build base select statement.
+    $select = db_select('comment', 'c');
+    $select->addField('c', 'cid');
+    $select->condition('c.created', REQUEST_TIME - $time, '<');
+
+    $select->join('feeds_item', 'fi', 'c.cid = fi.entity_id');
+
+    $select->condition('fi.entity_type', 'comment');
+    $select->condition('fi.id', $this->id);
+    $select->condition('fi.feed_nid', $source->feed_nid);
+
+    return $select;
   }
 
   /**
@@ -186,12 +212,11 @@ class FeedsCommentProcessor extends FeedsProcessor {
           ->execute()
           ->fetchField();
         break;
+
       case 'comment':
         $target_comment->comment_body[$target_comment->language][0]['value'] = $value;
         break;
-      case 'guid':
-        $target_comment->feeds_comment_item->guid = $value;
-        break;
+
       default:
         parent::setTargetElement($source, $target_comment, $target_element, $value);
         break;
@@ -251,12 +276,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
         'name' => t('Homepage'),
         'description' => t('The comment author\'s home page address'),
       ),
-      'guid' => array(
-        'name' => t('GUID'),
-        'description' => t('The external GUID of the comment. E. g. the feed item GUID in the case of a syndication feed. May be unique.'),
-        'optional_unique' => TRUE,
-      ),
-    );
+    ) + parent::getMappingTargets();
 
     // Let other modules expose mapping targets.
     self::loadMappers();
@@ -265,27 +285,4 @@ class FeedsCommentProcessor extends FeedsProcessor {
     return $targets;
   }
 
-  /**
-   * Get cid of an existing feed item comment if available.
-   */
-  protected function existingEntityId(FeedsSource $source, FeedsParserResult $result) {
-    if ($cid = parent::existingEntityId($source, $result)) {
-      return $cid;
-    }
-
-    // Iterate through all unique targets and test whether they do already
-    // exist in the database.
-    foreach ($this->uniqueTargets($source, $result) as $target => $value) {
-      switch ($target) {
-        case 'guid':
-          $cid = db_query("SELECT cid FROM {feeds_comment_item} WHERE feed_nid = :feed_nid AND id = :id AND guid = :guid", array(':feed_nid' => $source->feed_nid, ':id' => $source->id, ':guid' => $value))->fetchField();
-          break;
-      }
-      if ($cid) {
-        // Return with the first cid found.
-        return $cid;
-      }
-    }
-    return 0;
-  }
 }

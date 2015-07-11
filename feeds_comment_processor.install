@@ -1,59 +1,70 @@
 <?php
+
 /**
  * @file
- * Install, update and uninstall functions for the feeds_comment_processor module.
- *
+ * Update functions for feeds_comment_processor.module.
  */
-
 
 /**
- * Implements hook_schema().
+ * Migrate items from the {feeds_comment_item} table to {feeds_item}.
  */
-function feeds_comment_processor_schema() {
-  $schema = array();
-  $schema['feeds_comment_item'] = array(
-    'description' => 'Stores additional information about feed item comments. Used by FeedsCommentProcessor.',
-    'fields' => array(
-      'cid' => array(
-        'type' => 'int',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-        'description' => "Primary Key: The feed item comment's cid.",
-      ),
-      'id' => array(
-        'type' => 'varchar',
-        'length' => 128,
-        'not null' => TRUE,
-        'default' => '',
-        'description' => 'The id of the fields object that is the producer of this item.',
-      ),
-      'feed_nid' => array(
-        'type' => 'int',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-        'description' => "Node id of the owner feed, if available.",
-        'default' => 0,
-      ),
-      'imported' => array(
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-        'description' => 'Import date of the feed item, as a Unix timestamp.',
-      ),
-      'guid' => array(
-        'type' => 'text',
-        'not null' => TRUE,
-        'description' => 'Unique identifier for the feed item.',
-      ),
-    ),
-    'primary key' => array('cid'),
-    'indexes' => array(
-      'id' => array('id'),
-      'feed_nid' => array('feed_nid'),
-      'imported' => array('imported'),
-      'guid' => array(array('guid', 255)),
-    ),
-  );
-  return $schema;
+function feeds_comment_processor_update_7101(array &$sandbox) {
+  if (!isset($sandbox['progress'])) {
+    $sandbox['progress'] = 0;
+    $sandbox['total'] = (int) db_query("SELECT COUNT(*) FROM {feeds_comment_item}")->fetchField();
+
+    // Nothing to do.
+    if (empty($sandbox['total'])) {
+      return;
+    }
+  }
+
+  $query = db_query_range("SELECT * FROM {feeds_comment_item}", 0, 50);
+
+  foreach ($query as $item) {
+    // Check if there's a matching entry in {feeds_item}.
+    $exists = db_select('feeds_item')
+      ->fields('feeds_item')
+      ->condition('entity_type', 'comment')
+      ->condition('entity_id', $item->cid)
+      ->condition('id', $item->id)
+      ->condition('feed_nid', $item->feed_nid)
+      ->execute();
+
+    if ($exists) {
+      db_update('feeds_item')
+        ->condition('entity_type', 'comment')
+        ->condition('entity_id', $item->cid)
+        ->condition('id', $item->id)
+        ->condition('feed_nid', $item->feed_nid)
+        ->fields(array('guid' => $item->guid))
+        ->execute();
+    }
+
+    db_delete('feeds_comment_item')->condition('cid', $item->cid)->execute();
+
+    $sandbox['progress']++;
+  }
+
+  if ($sandbox['progress'] === $sandbox['total']) {
+    $sandbox['#finished'] = 1.0;
+
+    return t('Migrated @count feed items.', array('@count' => $sandbox['total']));
+  }
+
+  $sandbox['#finished'] = (float) ($sandbox['progress'] / $sandbox['total']);
+
+  // Don't allow rounding errors if we're processing lots of items.
+  if ($sandbox['#finished'] === 1.0) {
+    $sandbox['#finished'] = 0.99;
+  }
 }
 
+/**
+ * Delete the {feeds_comment_item} table.
+ */
+function feeds_comment_processor_update_7102() {
+  if (db_table_exists('feeds_comment_item')) {
+    db_drop_table('feeds_comment_item');
+  }
+}
