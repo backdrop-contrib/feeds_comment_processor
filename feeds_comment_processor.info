@@ -4,6 +4,3 @@ package = Feeds
 dependencies[] = feeds
 dependencies[] = comment
 core = 7.x
-php = 5.2
-
-files[] = FeedsCommentProcessor.inc

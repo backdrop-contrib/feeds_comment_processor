@@ -1,12 +1,16 @@
 <?php
 
 /**
+ * @file
+ * Provides a comment entity processor for Feeds.
+ */
+
+/**
  * Implements hook_feeds_plugins().
  */
 function feeds_comment_processor_feeds_plugins() {
-  $path = drupal_get_path('module', 'feeds_comment_processor');
-
   $info = array();
+
   $info['FeedsCommentProcessor'] = array(
     'name' => 'Comment processor',
     'description' => 'Create and update comments.',
@@ -15,8 +19,9 @@ function feeds_comment_processor_feeds_plugins() {
       'parent' => 'FeedsProcessor',
       'class' => 'FeedsCommentProcessor',
       'file' => 'FeedsCommentProcessor.inc',
-      'path' => $path,
+      'path' => drupal_get_path('module', 'feeds_comment_processor'),
     ),
   );
+
   return $info;
 }

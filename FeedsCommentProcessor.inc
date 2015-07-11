@@ -9,24 +9,26 @@
  * Creates comments from feed items.
  */
 class FeedsCommentProcessor extends FeedsProcessor {
+
   /**
-   * Define entity type.
+   * {@inheritdoc}
    */
   public function entityType() {
     return 'comment';
   }
 
   /**
-   * Implements parent::entityInfo().
+   * {@inheritdoc}
    */
   protected function entityInfo() {
     $info = parent::entityInfo();
     $info['label plural'] = t('Comments');
+
     return $info;
   }
 
   /**
-   * Creates a new comment in memory and returns it.
+   * {@inheritdoc}
    */
   protected function newEntity(FeedsSource $source) {
     $comment = new stdClass();
@@ -49,14 +51,14 @@ class FeedsCommentProcessor extends FeedsProcessor {
   }
 
   /**
-   * Loads an existing comment.
+   * {@inheritdoc}
    */
   protected function entityLoad(FeedsSource $source, $cid) {
     return comment_load($cid);
   }
 
   /**
-   * Validates a comment.
+   * {@inheritdoc}
    */
   protected function entityValidate($comment) {
     if (empty($comment->nid)) {
@@ -65,7 +67,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
   }
 
   /**
-   * Save a comment.
+   * {@inheritdoc}
    */
   public function entitySave($comment) {
     $comment->date = date('r', $comment->created);
@@ -76,7 +78,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
   }
 
   /**
-   * Delete multiple comments.
+   * {@inheritdoc}
    */
   protected function entityDeleteMultiple($cids) {
     comment_delete_multiple($cids);
@@ -133,25 +135,26 @@ class FeedsCommentProcessor extends FeedsProcessor {
   }
 
   /**
-   * Return expiry time.
+   * {@inheritdoc}
    */
   public function expiryTime() {
     return $this->config['expire'];
   }
 
   /**
-   * Override parent::configDefaults().
+   * {@inheritdoc}
    */
   public function configDefaults() {
     $defaults = parent::configDefaults();
     $defaults['input_format'] = filter_default_format();
     $defaults['expire'] = FEEDS_EXPIRE_NEVER;
     $defaults['author'] = 0;
+
     return $defaults;
   }
 
   /**
-   * Override parent::configForm().
+   * {@inheritdoc}
    */
   public function configForm(&$form_state) {
     $form = parent::configForm($form_state);
@@ -179,19 +182,18 @@ class FeedsCommentProcessor extends FeedsProcessor {
   }
 
   /**
-   * Override parent::configFormValidate().
+   * {@inheritdoc}
    */
   public function configFormValidate(&$values) {
+    $values['author'] = 0;
+
     if ($author = user_load_by_name($values['author'])) {
       $values['author'] = $author->uid;
-    }
-    else {
-      $values['author'] = 0;
     }
   }
 
   /**
-   * Override setTargetElement to operate on a target item that is a comment.
+   * {@inheritdoc}
    */
   public function setTargetElement(FeedsSource $source, $target_comment, $target_element, $value) {
     switch ($target_element) {
@@ -215,7 +217,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
   }
 
   /**
-   * Return available mapping targets.
+   * {@inheritdoc}
    */
   public function getMappingTargets() {
     $targets = array(
