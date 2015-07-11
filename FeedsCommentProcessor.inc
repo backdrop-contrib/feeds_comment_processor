@@ -35,17 +35,14 @@ class FeedsCommentProcessor extends FeedsProcessor {
     $comment->cid = 0;
     $comment->pid = 0;
     $comment->uid = $this->config['author'];
-    $account = user_load($comment->uid);
-    $comment->mail = $account->mail;
-    $comment->name = $account->name;
     $comment->node_type = !empty($this->config['bundle']) ? $this->config['bundle'] : NULL;
     $comment->hostname = '127.0.0.1';
     $comment->created = REQUEST_TIME;
     $comment->changed = REQUEST_TIME;
-    $comment->date = REQUEST_TIME;
-    $comment->is_anonymous = 0;
-    $comment->status = 0;
     $comment->language = LANGUAGE_NONE;
+    $comment->name = '';
+    $comment->mail = '';
+    $comment->subject = '';
     $comment->comment_body[$comment->language][0]['format'] = $this->config['input_format'];
 
     return $comment;
@@ -65,24 +62,55 @@ class FeedsCommentProcessor extends FeedsProcessor {
     if (empty($comment->nid)) {
       throw new FeedsValidationException(t('Unable to create comment with empty NID.'));
     }
+
+    $comment->status = empty($comment->status) ? COMMENT_NOT_PUBLISHED : COMMENT_PUBLISHED;
+
+    $this->prepareCommentSubject($comment);
+
+    foreach (array('uid', 'name', 'mail') as $key) {
+      $comment->$key = trim($comment->$key);
+    }
+
+    $comment->uid = (int) $comment->uid;
+
+    $comment->mail = valid_email_address($comment->mail) ? $comment->mail : '';
+
+    // If there is a valid user id, populate any default values.
+    if ($comment->uid && $account = user_load($comment->uid)) {
+      $comment->name = $comment->name ? $comment->name : $account->name;
+      $comment->mail = $comment->mail ? $comment->mail : $account->mail;
+
+      // Unpublish comments by users that are not allowed to skip approval.
+      if (!user_access('skip comment approval', $account)) {
+        $comment->status = COMMENT_NOT_PUBLISHED;
+      }
+    }
+    elseif (!$comment->uid && !$comment->name) {
+      $comment->name = variable_get('anonymous', t('Anonymous'));
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function entitySaveAccess($comment) {
+    if (!$this->config['authorize'] || !$comment->uid) {
+      return;
+    }
+
+    if (!$author = user_load($comment->uid)) {
+      throw new FeedsAccessException(t('User %uid is not a valid user.', array('%uid' => $comment->uid)));
+    }
+
+    if (!user_access('post comments', $author)) {
+      throw new FeedsAccessException(t('User %user is not permitted to post comments.', array('%user' => $author->name)));
+    }
   }
 
   /**
    * {@inheritdoc}
    */
   public function entitySave($comment) {
-    // comment_submit() overrides the created and changed properties.
-    $created = $comment->created;
-    $changed = $comment->changed;
-
-    comment_submit($comment);
-
-    $comment->created = $created;
-    $comment->changed = $changed;
-    $comment->date = date('r', $comment->created);
-    // Trim the subject if it is too long.
-    $comment->subject = truncate_utf8(trim(strip_tags($comment->subject)), 64, TRUE, TRUE);
-
     comment_save($comment);
   }
 
@@ -158,6 +186,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
     $defaults['input_format'] = filter_default_format();
     $defaults['expire'] = FEEDS_EXPIRE_NEVER;
     $defaults['author'] = 0;
+    $defaults['authorize'] = TRUE;
 
     return $defaults;
   }
@@ -178,12 +207,20 @@ class FeedsCommentProcessor extends FeedsProcessor {
       '#autocomplete_path' => 'user/autocomplete',
       '#default_value' => empty($author->name) ?  'anonymous' : check_plain($author->name),
     );
+
+    $form['authorize'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Authorize'),
+      '#description' => t('Check that the author has permission to create and publish comments.'),
+      '#default_value' => $this->config['authorize'],
+    );
+
     $period = drupal_map_assoc(array(FEEDS_EXPIRE_NEVER, 3600, 10800, 21600, 43200, 86400, 259200, 604800, 604800 * 4, 604800 * 12, 604800 * 24, 31536000), 'feeds_format_expire');
     $form['expire'] = array(
       '#type' => 'select',
       '#title' => t('Expire comments'),
       '#options' => $period,
-      '#description' => t('Select after how much time comments should be deleted. The comment\'s published date will be used for determining the comment\'s age, see Mapping settings.'),
+      '#description' => t("Select after how much time comments should be deleted. The comment's published date will be used for determining the comment's age, see Mapping settings."),
       '#default_value' => $this->config['expire'],
     );
 
@@ -206,6 +243,8 @@ class FeedsCommentProcessor extends FeedsProcessor {
    * {@inheritdoc}
    */
   public function setTargetElement(FeedsSource $source, $target_comment, $target_element, $value) {
+    $value = is_array($value) ? reset($value) : $value;
+
     switch ($target_element) {
       case 'nid_by_guid':
         $target_comment->nid = db_select('feeds_item', 'f')
@@ -223,6 +262,18 @@ class FeedsCommentProcessor extends FeedsProcessor {
       case 'created':
       case 'changed':
         $target_comment->$target_element = feeds_to_unixtime($value, REQUEST_TIME);
+        break;
+
+      case 'user_name':
+        if ($account = user_load_by_name($value)) {
+          $target_comment->uid = $account->uid;
+        }
+        break;
+
+      case 'user_mail':
+        if ($account = user_load_by_mail($value)) {
+          $target_comment->uid = $account->uid;
+        }
         break;
 
       default:
@@ -251,6 +302,14 @@ class FeedsCommentProcessor extends FeedsProcessor {
       'uid' => array(
         'name' => t('User ID'),
         'description' => t('The Drupal user ID of the comment author.'),
+      ),
+      'user_name' => array(
+        'name' => t('Username'),
+        'description' => t('The Drupal username of the comment author.'),
+      ),
+      'user_mail' => array(
+        'name' => t('User email'),
+        'description' => t('The email address of the comment author.'),
       ),
       'subject' => array(
         'name' => t('Title'),
@@ -306,6 +365,40 @@ class FeedsCommentProcessor extends FeedsProcessor {
     }
 
     return $targets;
+  }
+
+  /**
+   * Ensures that a comment subject exists and is valid.
+   *
+   * @param stdClass $comment
+   *   The comment.
+   */
+  protected function prepareCommentSubject(stdClass $comment) {
+    $comment->subject = truncate_utf8(trim(decode_entities(strip_tags($comment->subject))), 64, TRUE);
+
+    if ($comment->subject !== '') {
+      return;
+    }
+
+    // The body may be in any format, so:
+    // 1) Filter it into HTML
+    // 2) Strip out all HTML tags
+    // 3) Convert entities back to plain-text.
+    $field = field_info_field('comment_body');
+    $langcode = field_is_translatable('comment', $field) ? entity_language('comment', $comment) : LANGUAGE_NONE;
+    $comment_body = $comment->comment_body[$langcode][0];
+    if (isset($comment_body['format'])) {
+      $comment_text = check_markup($comment_body['value'], $comment_body['format']);
+    }
+    else {
+      $comment_text = check_plain($comment_body['value']);
+    }
+    $comment->subject = truncate_utf8(trim(decode_entities(strip_tags($comment_text))), 29, TRUE);
+    // Edge cases where the comment body is populated only by HTML tags will
+    // require a default subject.
+    if ($comment->subject === '') {
+      $comment->subject = t('(No subject)');
+    }
   }
 
 }

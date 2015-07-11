@@ -53,14 +53,13 @@ class ProcessorWebTest extends \FeedsWebTestCase {
           'target' => 'comment_body',
           'format' => 'plain_text',
         ),
+        3 => array(
+          'source' => 'status',
+          'target' => 'status',
+        ),
       )
     );
-  }
 
-  /**
-   * Tests a very basic import.
-   */
-  public function test() {
     $parent = (object) array('title' => 'Parent', 'type' => 'article');
     node_save($parent);
 
@@ -74,7 +73,12 @@ class ProcessorWebTest extends \FeedsWebTestCase {
       'id' => 'node_importer',
     );
     drupal_write_record('feeds_item', $item);
+  }
 
+  /**
+   * Tests a very basic import.
+   */
+  public function test() {
     $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
     $nid = $this->createFeedNode('comment', $url, 'Comment test');
 
@@ -84,6 +88,48 @@ class ProcessorWebTest extends \FeedsWebTestCase {
     $this->assertEqual('test subject', $comment->subject);
     $this->assertEqual('test body text', $comment->comment_body[LANGUAGE_NONE][0]['value']);
     $this->assertEqual('plain_text', $comment->comment_body[LANGUAGE_NONE][0]['format']);
+  }
+
+  /**
+   * Tests authorization.
+   */
+  public function testAuthorize() {
+    // Create a user with limited permissions. We can't use
+    // $this->drupalCreateUser here because we need to to set a specific user
+    // name.
+    $edit = array(
+      'name' => 'Poor user',
+      'mail' => 'poor@example.com',
+      'pass' => user_password(),
+      'status' => 1,
+    );
+
+    $account = user_save(drupal_anonymous_user(), $edit);
+
+    // // Adding a mapping to the user_name will invoke authorization.
+    $this->addMappings('comment',
+      array(
+        4 => array(
+          'source' => 'mail',
+          'target' => 'user_mail',
+        ),
+      )
+    );
+
+    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
+    $nid = $this->createFeedNode('comment', $url, 'Comment test');
+
+    $this->assertText('Failed importing 1 comment');
+    $this->assertText('User ' . $account->name . ' is not permitted to post comments.');
+    $this->assertEqual(0, db_query("SELECT COUNT(*) FROM {comment}")->fetchField());
+
+    user_role_change_permissions(2, array('post comments' => TRUE));
+
+    $this->drupalPost("node/$nid/import", array(), 'Import');
+    $this->assertText('Created 1 comment.');
+    $this->assertEqual(1, db_query("SELECT COUNT(*) FROM {comment}")->fetchField());
+    $comment = comment_load(1);
+    $this->assertEqual(0, $comment->status);
   }
 
 }

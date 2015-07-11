@@ -1,2 +1,2 @@
-guid,subject,body
-1,test subject,test body text
+guid,subject,body,mail,status
+1,test subject,test body text,poor@example.com,1
