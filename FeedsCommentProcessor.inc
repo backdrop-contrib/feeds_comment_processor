@@ -185,10 +185,11 @@ class FeedsCommentProcessor extends FeedsProcessor {
    * {@inheritdoc}
    */
   public function configFormValidate(&$values) {
-    $values['author'] = 0;
-
     if ($author = user_load_by_name($values['author'])) {
       $values['author'] = $author->uid;
+    }
+    else {
+      $values['author'] = 0;
     }
   }
 
@@ -247,7 +248,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
       ),
       'hostname' => array(
         'name' => t('Hostname'),
-        'description' => t('The author\'s host name.'),
+        'description' => t("The author's host name."),
       ),
       'created' => array(
         'name' => t('Published date'),
@@ -259,21 +260,32 @@ class FeedsCommentProcessor extends FeedsProcessor {
       ),
       'name' => array(
         'name' => t('Name'),
-        'description' => t('The comment author\'s name.'),
+        'description' => t("The comment author's name."),
       ),
       'mail' => array(
         'name' => t('Email'),
-        'description' => t('The comment author\'s e-mail address.'),
+        'description' => t("The comment author's e-mail address."),
       ),
       'homepage' => array(
         'name' => t('Homepage'),
-        'description' => t('The comment author\'s home page address'),
+        'description' => t("The comment author's home page address"),
       ),
     ) + parent::getMappingTargets();
 
-    // Let other modules expose mapping targets.
-    self::loadMappers();
-    feeds_alter('feeds_comment_processor_targets', $targets);
+    // @todo Remove this at some point.
+    drupal_alter('feeds_comment_processor_targets', $targets);
+
+    // Detect modern version of Feeds.
+    if (method_exists($this, 'getHookTargets')) {
+      $this->getHookTargets($targets);
+    }
+    else {
+      self::loadMappers();
+      $entity_type = $this->entityType();
+      $bundle = $this->bundle();
+
+      drupal_alter('feeds_processor_targets', $targets, $entity_type, $bundle);
+    }
 
     return $targets;
   }

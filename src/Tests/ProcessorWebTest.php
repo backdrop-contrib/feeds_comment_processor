@@ -48,6 +48,11 @@ class ProcessorWebTest extends \FeedsWebTestCase {
           'source' => 'guid',
           'target' => 'nid_by_guid',
         ),
+        2 => array(
+          'source' => 'body',
+          'target' => 'comment_body',
+          'format' => 'plain_text',
+        ),
       )
     );
   }
@@ -75,7 +80,10 @@ class ProcessorWebTest extends \FeedsWebTestCase {
 
     $this->assertText('Created 1 comment');
 
-    $this->assertEqual(1, db_query("SELECT COUNT(*) FROM {comment}")->fetchField());
+    $comment = comment_load(1);
+    $this->assertEqual('test subject', $comment->subject);
+    $this->assertEqual('test body text', $comment->comment_body[LANGUAGE_NONE][0]['value']);
+    $this->assertEqual('plain_text', $comment->comment_body[LANGUAGE_NONE][0]['format']);
   }
 
 }

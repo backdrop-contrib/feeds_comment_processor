@@ -1,2 +1,2 @@
-guid,subject
-1,test subject
+guid,subject,body
+1,test subject,test body text
