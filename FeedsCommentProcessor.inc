@@ -36,7 +36,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
     $comment->pid = 0;
     $comment->nid = 0;
     $comment->uid = $this->config['author'];
-    $comment->node_type = !empty($this->config['bundle']) ? $this->config['bundle'] : NULL;
+    $comment->node_type = $this->bundle();
     $comment->hostname = '127.0.0.1';
     $comment->created = REQUEST_TIME;
     $comment->changed = REQUEST_TIME;
@@ -258,10 +258,21 @@ class FeedsCommentProcessor extends FeedsProcessor {
 
     switch ($target_element) {
       case 'nid_by_guid':
-        $target_comment->nid = db_select('feeds_item', 'f')
+        $target_comment->nid = (int) db_select('feeds_item', 'f')
           ->fields('f', array('entity_id'))
           ->condition('entity_type', 'node')
           ->condition('guid', $value)
+          ->range(0, 1)
+          ->execute()
+          ->fetchField();
+        break;
+
+      case 'nid_by_title':
+        $target_comment->nid = (int) db_select('node', 'n')
+          ->fields('n', array('nid'))
+          ->condition('title', $value)
+          ->condition('type', substr($this->bundle(), 13))
+          ->range(0, 1)
           ->execute()
           ->fetchField();
         break;
@@ -327,6 +338,10 @@ class FeedsCommentProcessor extends FeedsProcessor {
       'nid_by_guid' => array(
         'name' => t('Node ID by GUID'),
         'description' => t('The node to which this comment is a reply, looked up by the GUID of a previous import.'),
+      ),
+      'nid_by_title' => array(
+        'name' => t('Node ID by title'),
+        'description' => t('The node to which this comment is a reply, looked up by the title of the node.'),
       ),
       'uid' => array(
         'name' => t('User ID'),

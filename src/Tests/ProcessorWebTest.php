@@ -38,31 +38,29 @@ class ProcessorWebTest extends \FeedsWebTestCase {
     );
     $this->setSettings('comment', 'FeedsCommentProcessor', $edit);
 
-    $this->addMappings('comment',
-      array(
-        0 => array(
-          'source' => 'subject',
-          'target' => 'subject',
-        ),
-        1 => array(
-          'source' => 'guid',
-          'target' => 'nid_by_guid',
-        ),
-        2 => array(
-          'source' => 'body',
-          'target' => 'comment_body',
-          'format' => 'plain_text',
-        ),
-        3 => array(
-          'source' => 'status',
-          'target' => 'status',
-        ),
-        4 => array(
-          'source' => 'hostname',
-          'target' => 'hostname',
-        ),
-      )
-    );
+    $this->addMappings('comment', array(
+      0 => array(
+        'source' => 'subject',
+        'target' => 'subject',
+      ),
+      1 => array(
+        'source' => 'guid',
+        'target' => 'nid_by_guid',
+      ),
+      2 => array(
+        'source' => 'body',
+        'target' => 'comment_body',
+        'format' => 'plain_text',
+      ),
+      3 => array(
+        'source' => 'status',
+        'target' => 'status',
+      ),
+      4 => array(
+        'source' => 'hostname',
+        'target' => 'hostname',
+      ),
+    ));
 
     $parent = (object) array('title' => 'Parent', 'type' => 'article');
     node_save($parent);
@@ -89,6 +87,7 @@ class ProcessorWebTest extends \FeedsWebTestCase {
     $this->assertText('Created 1 comment');
 
     $comment = comment_load(1);
+    $this->assertEqual(1, $comment->nid);
     $this->assertEqual('test subject', $comment->subject);
     $this->assertEqual('example.com', $comment->hostname);
     $this->assertEqual('test body text', $comment->comment_body[LANGUAGE_NONE][0]['value']);
@@ -112,14 +111,12 @@ class ProcessorWebTest extends \FeedsWebTestCase {
     $account = user_save(drupal_anonymous_user(), $edit);
 
     // // Adding a mapping to the user_name will invoke authorization.
-    $this->addMappings('comment',
-      array(
-        5 => array(
-          'source' => 'mail',
-          'target' => 'user_mail',
-        ),
-      )
-    );
+    $this->addMappings('comment', array(
+      5 => array(
+        'source' => 'mail',
+        'target' => 'user_mail',
+      ),
+    ));
 
     $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
     $nid = $this->createFeedNode('comment', $url, 'Comment test');
@@ -142,14 +139,12 @@ class ProcessorWebTest extends \FeedsWebTestCase {
    */
   public function testMappingCid() {
     // // Adding a mapping to the user_name will invoke authorization.
-    $this->addMappings('comment',
-      array(
-        5 => array(
-          'source' => 'guid',
-          'target' => 'cid',
-        ),
-      )
-    );
+    $this->addMappings('comment', array(
+      5 => array(
+        'source' => 'guid',
+        'target' => 'cid',
+      ),
+    ));
 
     $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
     $nid = $this->createFeedNode('comment', $url, 'Comment test');
@@ -160,6 +155,37 @@ class ProcessorWebTest extends \FeedsWebTestCase {
     $this->assertEqual(10, $comment->cid);
     $this->assertEqual(1, $comment->nid);
     $this->assertEqual('01/', $comment->thread);
+  }
+
+  /**
+   * Tests mapping to node by title.
+   */
+  public function testMappingByTitle() {
+    $this->removeMappings('comment', array(
+      1 => array(
+        'source' => 'guid',
+        'target' => 'nid_by_guid',
+      ),
+    ));
+
+    $this->addMappings('comment', array(
+      4 => array(
+        'source' => 'title',
+        'target' => 'nid_by_title',
+      ),
+    ));
+
+    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
+    $nid = $this->createFeedNode('comment', $url, 'Comment test');
+
+    $this->assertText('Created 1 comment');
+
+    $comment = comment_load(1);
+    $this->assertEqual(1, $comment->nid);
+    $this->assertEqual('test subject', $comment->subject);
+    $this->assertEqual('example.com', $comment->hostname);
+    $this->assertEqual('test body text', $comment->comment_body[LANGUAGE_NONE][0]['value']);
+    $this->assertEqual('plain_text', $comment->comment_body[LANGUAGE_NONE][0]['format']);
   }
 
 }
