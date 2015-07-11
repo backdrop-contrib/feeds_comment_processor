@@ -6,6 +6,13 @@
  */
 
 /**
+ * Implements hook_enable().
+ */
+function feeds_comment_processor_enable() {
+  cache_clear_all('plugins:feeds:plugins', 'cache');
+}
+
+/**
  * Migrate items from the {feeds_comment_item} table to {feeds_item}.
  */
 function feeds_comment_processor_update_7101(array &$sandbox) {
