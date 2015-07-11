@@ -96,7 +96,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
   /**
    * {@inheritdoc}
    */
-  public function expire($time = NULL) {
+  public function expire(FeedsSource $source, $time = NULL) {
     $state = $source->state(FEEDS_PROCESS_EXPIRE);
 
     if ($time === NULL) {
