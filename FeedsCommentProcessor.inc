@@ -45,6 +45,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
     $account = user_load($comment->uid);
     $comment->mail = $account->mail;
     $comment->name = $account->name;
+    $comment->node_type = !empty($this->config['bundle']) ? $this->config['bundle'] : NULL;
     $comment->hostname = '127.0.0.1';
     $comment->created = FEEDS_REQUEST_TIME;
     $comment->date = FEEDS_REQUEST_TIME;
@@ -136,19 +137,10 @@ class FeedsCommentProcessor extends FeedsProcessor {
    * Override parent::configForm().
    */
   public function configForm(&$form_state) {
-    $form = array();
-    $format_options = array(filter_default_format() => t('Default format'));
-    $formats = filter_formats();
-    foreach ($formats as $format) {
-      $format_options[$format->format] = $format->name;
-    }
-    $form['input_format'] = array(
-      '#type' => 'select',
-      '#title' => t('Input format'),
-      '#description' => t('Select the input format for the comments to be created.'),
-      '#options' => $format_options,
-      '#default_value' => $this->config['input_format'],
-    );
+    $form = parent::configForm($form_state);
+
+    $form['bundle']['#title'] = t('Comment type');
+
     $author = user_load($this->config['author']);
     $form['author'] = array(
       '#type' => 'textfield',
@@ -165,17 +157,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
       '#description' => t('Select after how much time comments should be deleted. The comment\'s published date will be used for determining the comment\'s age, see Mapping settings.'),
       '#default_value' => $this->config['expire'],
     );
-    $form['update_existing'] = array(
-      '#type' => 'radios',
-      '#title' => t('Update existing comments'),
-      '#description' => t('Select how existing comments should be updated. Existing comments will be determined using mappings that are a "unique target".'),
-      '#options' => array(
-        FEEDS_SKIP_EXISTING => 'Do not update existing comments',
-        FEEDS_REPLACE_EXISTING => 'Replace existing comments',
-        FEEDS_UPDATE_EXISTING => 'Update existing comments (slower than replacing them)',
-      ),
-      '#default_value' => $this->config['update_existing'],
-    );
+
     return $form;
   }
 
