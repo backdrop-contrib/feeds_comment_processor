@@ -34,6 +34,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
     $comment = new stdClass();
     $comment->cid = 0;
     $comment->pid = 0;
+    $comment->nid = 0;
     $comment->uid = $this->config['author'];
     $comment->node_type = !empty($this->config['bundle']) ? $this->config['bundle'] : NULL;
     $comment->hostname = '127.0.0.1';
@@ -43,6 +44,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
     $comment->name = '';
     $comment->mail = '';
     $comment->subject = '';
+    $comment->feeds_is_new = TRUE;
 
     return $comment;
   }
@@ -50,27 +52,18 @@ class FeedsCommentProcessor extends FeedsProcessor {
   /**
    * {@inheritdoc}
    */
-  protected function entityLoad(FeedsSource $source, $cid) {
-    return comment_load($cid);
-  }
-
-  /**
-   * {@inheritdoc}
-   */
   protected function entityValidate($comment) {
-    if (empty($comment->nid)) {
+    if (!$comment->nid) {
       throw new FeedsValidationException(t('Unable to create comment with empty NID.'));
+    }
+
+    if ($comment->pid && !comment_load($comment->pid)) {
+      throw new FeedsValidationException(t('Invalid parent comment id.'));
     }
 
     $comment->status = empty($comment->status) ? COMMENT_NOT_PUBLISHED : COMMENT_PUBLISHED;
 
     $this->prepareCommentSubject($comment);
-
-    foreach (array('uid', 'name', 'mail', 'hostname') as $key) {
-      $comment->$key = trim($comment->$key);
-    }
-
-    $comment->uid = (int) $comment->uid;
 
     $comment->mail = valid_email_address($comment->mail) ? $comment->mail : '';
 
@@ -110,6 +103,15 @@ class FeedsCommentProcessor extends FeedsProcessor {
    * {@inheritdoc}
    */
   public function entitySave($comment) {
+    // Mapping an existing cid that does't exist in the database. Force it.
+    if (!empty($comment->feeds_is_new) && $comment->cid) {
+      if (empty($comment->thread)) {
+        $comment->thread = $this->calculateThread($comment);
+      }
+
+      drupal_write_record('comment', $comment);
+    }
+
     // Trick ip_address() to return the ip address mapped to the comment.
     $prev_ip = ip_address();
     $ip_address = &drupal_static('ip_address');
@@ -281,6 +283,20 @@ class FeedsCommentProcessor extends FeedsProcessor {
         }
         break;
 
+      case 'cid':
+      case 'pid':
+      case 'nid':
+      case 'uid':
+        $target_comment->$target_element = (int) trim($value);
+        break;
+
+      case 'name':
+      case 'mail':
+      case 'hostname':
+      case 'thread':
+        $target_comment->$target_element = trim($value);
+        break;
+
       default:
         parent::setTargetElement($source, $target_comment, $target_element, $value);
         break;
@@ -292,9 +308,17 @@ class FeedsCommentProcessor extends FeedsProcessor {
    */
   public function getMappingTargets() {
     $targets = array(
+      'cid' => array(
+         'name' => t('Comment ID'),
+         'description' => t('The Drupal comment cid. NOTE: use this feature with care, comment ids are usually assigned by Drupal.'),
+       ),
       'pid' => array(
         'name' => t('Parent ID'),
         'description' => t('The cid to which this comment is a reply.'),
+      ),
+      'thread' => array(
+        'name' => t('Thread structure'),
+        'description' => t('The thread structure as kept by Drupal in van syntax.'),
       ),
       'nid' => array(
         'name' => t('Node ID'),
@@ -400,6 +424,55 @@ class FeedsCommentProcessor extends FeedsProcessor {
     if ($comment->subject === '') {
       $comment->subject = t('(No subject)');
     }
+  }
+
+  /**
+   * Calculates the thread value for a comment.
+   *
+   * @param stdClass $comment
+   *   The comment.
+   *
+   * @return string
+   *   The Drupal thread value.
+   */
+  protected function calculateThread(stdClass $comment) {
+    if ($comment->pid == 0) {
+      // This is a comment with no parent comment (depth 0): we start by
+      // retrieving the maximum thread level.
+      $max = db_query('SELECT MAX(thread) FROM {comment} WHERE nid = :nid', array(':nid' => $comment->nid))->fetchField();
+      // Strip the "/" from the end of the thread.
+      $max = rtrim($max, '/');
+      // We need to get the value at the correct depth.
+      $parts = explode('.', $max);
+      $firstsegment = $parts[0];
+      // Finally, build the thread field for this new comment.
+      return int2vancode(vancode2int($firstsegment) + 1) . '/';
+    }
+    // This is a comment with a parent comment, so increase the part of the
+    // thread value at the proper depth.
+    // Get the parent comment:
+    $parent = comment_load($comment->pid);
+    // Strip the "/" from the end of the parent thread.
+    $parent->thread = rtrim((string) $parent->thread, '/');
+    // Get the max value in *this* thread.
+    $max = db_query("SELECT MAX(thread) FROM {comment} WHERE thread LIKE :thread AND nid = :nid", array(
+      ':thread' => $parent->thread . '.%',
+      ':nid' => $comment->nid,
+    ))->fetchField();
+
+    // First child of this parent.
+    if ($max == '') {
+      return $parent->thread . '.' . int2vancode(0) . '/';
+    }
+
+    // Strip the "/" at the end of the thread.
+    $max = rtrim($max, '/');
+    // Get the value at the correct depth.
+    $parts = explode('.', $max);
+    $parent_depth = count(explode('.', $parent->thread));
+    $last = $parts[$parent_depth];
+    // Finally, build the thread field for this new comment.
+    return $parent->thread . '.' . int2vancode(vancode2int($last) + 1) . '/';
   }
 
 }

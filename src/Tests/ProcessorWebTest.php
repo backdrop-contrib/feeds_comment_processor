@@ -69,7 +69,7 @@ class ProcessorWebTest extends \FeedsWebTestCase {
 
     // Insert a feeds_item record.
     $item = (object) array(
-      'guid' => 1,
+      'guid' => 10,
       'url' => '',
       'entity_type' => 'node',
       'entity_id' => $parent->nid,
@@ -135,6 +135,31 @@ class ProcessorWebTest extends \FeedsWebTestCase {
     $this->assertEqual(1, db_query("SELECT COUNT(*) FROM {comment}")->fetchField());
     $comment = comment_load(1);
     $this->assertEqual(0, $comment->status);
+  }
+
+  /**
+   * Tests importing existing cids.
+   */
+  public function testMappingCid() {
+    // // Adding a mapping to the user_name will invoke authorization.
+    $this->addMappings('comment',
+      array(
+        5 => array(
+          'source' => 'guid',
+          'target' => 'cid',
+        ),
+      )
+    );
+
+    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
+    $nid = $this->createFeedNode('comment', $url, 'Comment test');
+
+    $this->assertText('Created 1 comment.');
+    $this->assertEqual(1, db_query("SELECT COUNT(*) FROM {comment}")->fetchField());
+    $comment = comment_load(10);
+    $this->assertEqual(10, $comment->cid);
+    $this->assertEqual(1, $comment->nid);
+    $this->assertEqual('01/', $comment->thread);
   }
 
 }
