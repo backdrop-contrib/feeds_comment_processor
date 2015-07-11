@@ -43,7 +43,6 @@ class FeedsCommentProcessor extends FeedsProcessor {
     $comment->name = '';
     $comment->mail = '';
     $comment->subject = '';
-    $comment->comment_body[$comment->language][0]['format'] = $this->config['input_format'];
 
     return $comment;
   }
@@ -192,7 +191,6 @@ class FeedsCommentProcessor extends FeedsProcessor {
    */
   public function configDefaults() {
     $defaults = parent::configDefaults();
-    $defaults['input_format'] = filter_default_format();
     $defaults['expire'] = FEEDS_EXPIRE_NEVER;
     $defaults['author'] = 0;
     $defaults['authorize'] = TRUE;
@@ -205,6 +203,8 @@ class FeedsCommentProcessor extends FeedsProcessor {
    */
   public function configForm(&$form_state) {
     $form = parent::configForm($form_state);
+
+    $form['input_format']['#access'] = FALSE;
 
     $form['bundle']['#title'] = t('Comment type');
 
@@ -264,10 +264,6 @@ class FeedsCommentProcessor extends FeedsProcessor {
           ->fetchField();
         break;
 
-      case 'comment':
-        $target_comment->comment_body[$target_comment->language][0]['value'] = $value;
-        break;
-
       case 'created':
       case 'changed':
         $target_comment->$target_element = feeds_to_unixtime($value, REQUEST_TIME);
@@ -323,10 +319,6 @@ class FeedsCommentProcessor extends FeedsProcessor {
       'subject' => array(
         'name' => t('Title'),
         'description' => t('The title of the comment.'),
-      ),
-      'comment' => array(
-        'name' => t('Comment'),
-        'description' => t('The comment body.'),
       ),
       'hostname' => array(
         'name' => t('Hostname'),
