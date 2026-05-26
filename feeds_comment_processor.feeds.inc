@@ -15,6 +15,7 @@ function feeds_comment_processor_feeds_plugins() {
     'name' => 'Comment processor',
     'description' => 'Create and update comments.',
     'help' => 'Create and update comments from parsed content.',
+    'module' => 'feeds_comment_processor',
     'handler' => array(
       'parent' => 'FeedsProcessor',
       'class' => 'FeedsCommentProcessor',
