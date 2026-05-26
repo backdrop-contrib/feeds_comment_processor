@@ -19,7 +19,7 @@ function feeds_comment_processor_feeds_plugins() {
       'parent' => 'FeedsProcessor',
       'class' => 'FeedsCommentProcessor',
       'file' => 'FeedsCommentProcessor.inc',
-      'path' => drupal_get_path('module', 'feeds_comment_processor'),
+      'path' => backdrop_get_path('module', 'feeds_comment_processor'),
     ),
   );
 

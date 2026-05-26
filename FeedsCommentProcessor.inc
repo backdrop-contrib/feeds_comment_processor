@@ -61,7 +61,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
       throw new FeedsValidationException(t('Invalid parent comment id.'));
     }
 
-    $comment->status = empty($comment->status) ? COMMENT_NOT_PUBLISHED : COMMENT_PUBLISHED;
+    $comment->status = empty($comment->status)?COMMENT_NOT_PUBLISHED : COMMENT_PUBLISHED;
 
     $this->prepareCommentSubject($comment);
 
@@ -78,7 +78,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
       }
     }
     elseif (!$comment->uid && !$comment->name) {
-      $comment->name = variable_get('anonymous', t('Anonymous'));
+      $comment->name = config_get('system.core', 'anonymous');
     }
   }
 
@@ -109,12 +109,12 @@ class FeedsCommentProcessor extends FeedsProcessor {
         $comment->thread = $this->calculateThread($comment);
       }
 
-      drupal_write_record('comment', $comment);
+      backdrop_write_record('comment', $comment);
     }
 
     // Trick ip_address() to return the ip address mapped to the comment.
     $prev_ip = ip_address();
-    $ip_address = &drupal_static('ip_address');
+    $ip_address = &backdrop_static('ip_address');
 
     // Set the ip address to the comment hostname.
     $ip_address = $comment->hostname;
@@ -186,7 +186,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
       '#default_value' => $this->config['authorize'],
     );
 
-    $period = drupal_map_assoc(array(FEEDS_EXPIRE_NEVER, 3600, 10800, 21600, 43200, 86400, 259200, 604800, 604800 * 4, 604800 * 12, 604800 * 24, 31536000), 'feeds_format_expire');
+    $period = backdrop_map_assoc(array(FEEDS_EXPIRE_NEVER, 3600, 10800, 21600, 43200, 86400, 259200, 604800, 604800 * 4, 604800 * 12, 604800 * 24, 31536000), 'feeds_format_expire');
     $form['expire'] = array(
       '#type' => 'select',
       '#title' => t('Expire comments'),
@@ -214,7 +214,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
    * {@inheritdoc}
    */
   public function setTargetElement(FeedsSource $source, $target_comment, $target_element, $value) {
-    $value = is_array($value) ? reset($value) : $value;
+    $value = is_array($value)?reset($value) : $value;
 
     switch ($target_element) {
       case 'nid_by_guid':
@@ -292,9 +292,9 @@ class FeedsCommentProcessor extends FeedsProcessor {
   public function getMappingTargets() {
     $targets = array(
       'cid' => array(
-         'name' => t('Comment ID'),
-         'description' => t('The Drupal comment cid. NOTE: use this feature with care, comment ids are usually assigned by Drupal.'),
-       ),
+        'name' => t('Comment ID'),
+        'description' => t('The Backdrop comment cid. NOTE: use this feature with care, comment ids are usually assigned by Backdrop.'),
+      ),
       'pid' => array(
         'name' => t('Parent ID'),
         'description' => t('The cid to which this comment is a reply.'),
@@ -305,7 +305,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
       ),
       'thread' => array(
         'name' => t('Thread structure'),
-        'description' => t('The thread structure as kept by Drupal in van syntax.'),
+        'description' => t('The thread structure as kept by Backdrop in van syntax.'),
       ),
       'nid' => array(
         'name' => t('Node ID'),
@@ -321,11 +321,11 @@ class FeedsCommentProcessor extends FeedsProcessor {
       ),
       'uid' => array(
         'name' => t('User ID'),
-        'description' => t('The Drupal user ID of the comment author.'),
+        'description' => t('The Backdrop user ID of the comment author.'),
       ),
       'user_name' => array(
         'name' => t('Username'),
-        'description' => t('The Drupal username of the comment author.'),
+        'description' => t('The Backdrop username of the comment author.'),
       ),
       'user_mail' => array(
         'name' => t('User email'),
@@ -366,7 +366,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
     ) + parent::getMappingTargets();
 
     // @todo Remove this at some point.
-    drupal_alter('feeds_comment_processor_targets', $targets);
+    backdrop_alter('feeds_comment_processor_targets', $targets);
 
     // Detect modern version of Feeds.
     if (method_exists($this, 'getHookTargets')) {
@@ -377,7 +377,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
       $entity_type = $this->entityType();
       $bundle = $this->bundle();
 
-      drupal_alter('feeds_processor_targets', $targets, $entity_type, $bundle);
+      backdrop_alter('feeds_processor_targets', $targets, $entity_type, $bundle);
     }
 
     return $targets;
@@ -401,7 +401,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
     // 2) Strip out all HTML tags
     // 3) Convert entities back to plain-text.
     $field = field_info_field('comment_body');
-    $langcode = field_is_translatable('comment', $field) ? entity_language('comment', $comment) : LANGUAGE_NONE;
+    $langcode = field_is_translatable('comment', $field)?entity_language('comment', $comment) : LANGUAGE_NONE;
     $comment_body = $comment->comment_body[$langcode][0];
     if (isset($comment_body['format'])) {
       $comment_text = check_markup($comment_body['value'], $comment_body['format']);
@@ -424,7 +424,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
    *   The comment.
    *
    * @return string
-   *   The Drupal thread value.
+   *   The Backdrop thread value.
    */
   protected function calculateThread(stdClass $comment) {
     if ($comment->pid == 0) {

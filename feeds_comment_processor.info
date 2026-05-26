@@ -3,4 +3,5 @@ description = Create and update comments from parsed content.
 package = Feeds
 dependencies[] = feeds
 dependencies[] = comment
-core = 7.x
+backdrop = 1.x
+type = module
