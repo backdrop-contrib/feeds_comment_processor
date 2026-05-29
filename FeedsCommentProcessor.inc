@@ -17,6 +17,9 @@ class FeedsCommentProcessor extends FeedsProcessor {
 
   /**
    * {@inheritdoc}
+   *
+   * Overridden to return FALSE because comments in Backdrop do not have
+   * independent bundles. Comment settings are inherited from the parent node.
    */
   public function bundleRequired() {
     return FALSE;
@@ -24,6 +27,9 @@ class FeedsCommentProcessor extends FeedsProcessor {
 
   /**
    * {@inheritdoc}
+   *
+   * Overridden to return 'node_type' since comments use the node_type property
+   * to identify which content type's comment settings apply.
    */
   public function bundleKey() {
     return 'node_type';
@@ -31,6 +37,10 @@ class FeedsCommentProcessor extends FeedsProcessor {
 
   /**
    * {@inheritdoc}
+   *
+   * Overridden to return the configured node_type or NULL, as comments
+   * inherit bundle behavior from their parent node rather than having an
+   * independent bundle.
    */
   public function bundle() {
     return isset($this->config['node_type']) ? $this->config['node_type'] : 'page';
