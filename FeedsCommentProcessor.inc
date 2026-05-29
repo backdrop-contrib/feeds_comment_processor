@@ -190,8 +190,49 @@ class FeedsCommentProcessor extends FeedsProcessor {
 
     comment_save($comment);
 
+    // AFTER comment is saved, save Comment Notify settings if provided.
+    if (module_exists('comment_notify') && isset($comment->comment_notify_value)) {
+      $this->saveCommentNotifySettings($comment);
+    }
+
     // Restore original IP.
     $ip_address = $prev_ip;
+  }
+
+  /**
+   * Save Comment Notify settings after comment is created.
+   *
+   * @param object $comment
+   *   The comment object that was just saved.
+   */
+  protected function saveCommentNotifySettings($comment) {
+    // Verify the comment_notify table exists.
+    if (!db_table_exists('comment_notify')) {
+      return;
+    }
+
+    // Prepare the data array for the comment_notify table.
+    $notify_data = array(
+      'notify' => isset($comment->comment_notify_value) ? $comment->comment_notify_value : 0,
+      'notified' => 0,
+    );
+
+    // For anonymous users, we also need to set the notify_hash.
+    if ($comment->uid == 0 && !empty($comment->mail)) {
+      $hash = isset($comment->comment_notify_hash) ? $comment->comment_notify_hash : '';
+      if (empty($hash)) {
+        // Generate a hash similar to Comment Notify's method.
+        $salt = backdrop_get_hash_salt();
+        $hash = md5($salt . $comment->mail . $comment->cid);
+      }
+      $notify_data['notify_hash'] = $hash;
+    }
+
+    // Insert or update the record in the comment_notify table.
+    db_merge('comment_notify')
+      ->key(array('cid' => $comment->cid))
+      ->fields($notify_data)
+      ->execute();
   }
 
   /**
@@ -512,6 +553,13 @@ class FeedsCommentProcessor extends FeedsProcessor {
         'description' => t("The comment author's website URL."),
       ),
     );
+
+    // Conditionally load Comment Notify integration.
+    if (module_exists('comment_notify')) {
+      module_load_include('inc', 'feeds_comment_processor', 'comment_notify_feeds');
+      // Assuming a function in that file to add targets.
+      feeds_comment_processor_comment_notify_targets($targets, $this);
+    }
 
     // Allow other modules to add targets.
     $this->getHookTargets($targets);
