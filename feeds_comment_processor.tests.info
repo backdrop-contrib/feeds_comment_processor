@@ -1,0 +1,5 @@
+[FeedsCommentProcessorWebTest]
+name = Feeds Comment Processor Web Test
+description = Tests the UI and import functionality of the Feeds Comment Processor.
+group = Feeds Comment Processor
+file = feeds_comment_processor.test

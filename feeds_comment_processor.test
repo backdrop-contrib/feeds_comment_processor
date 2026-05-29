@@ -1,30 +1,35 @@
 <?php
-
 /**
  * @file
- * Contains \Drupal\feeds_comment_processor\Tests\ProcessorWebTest.
+ * Tests for the Feeds Comment Processor module.
  */
-
-namespace Drupal\feeds_comment_processor\Tests;
 
 /**
  * Basic behavior tests for feeds_comment_processor.
  */
-class ProcessorWebTest extends \FeedsWebTestCase {
+class FeedsCommentProcessorWebTest extends BackdropWebTestBase {
 
-  public static function getInfo() {
-    return array(
-      'name' => 'Tests for comment processor',
-      'description' => 'Tests that comments can be imported.',
-      'group' => 'Feeds comment processor',
-    );
-  }
+  /**
+   * Modules to enable.
+   *
+   * @var array
+   */
+  public static $modules = array(
+    'feeds_comment_processor',
+    'feeds',
+    'comment',
+    'node',
+    'user',
+  );
 
   /**
    * {@inheritdoc}
    */
   public function setUp() {
-    parent::setUp('comment', 'feeds_comment_processor');
+    parent::setUp();
+
+    // Create an admin user for testing.
+    $this->adminUser = $this->backdropCreateUser(array('administer feeds'));
 
     // Create an importer configuration.
     $this->createImporterConfiguration('Test', 'comment');
@@ -62,26 +67,32 @@ class ProcessorWebTest extends \FeedsWebTestCase {
       ),
     ));
 
-    $parent = (object) array('title' => 'Parent', 'type' => 'article');
+    // Create a parent node.
+    $parent = (object) array(
+      'title' => 'Parent',
+      'type' => 'article',
+      'uid' => 1,
+      'status' => 1,
+    );
     node_save($parent);
 
-    // Insert a feeds_item record.
-    $item = (object) array(
+    // Insert a feeds_item record using Backdrop's database API.
+    db_insert('feeds_item')->fields(array(
       'guid' => 10,
       'url' => '',
       'entity_type' => 'node',
       'entity_id' => $parent->nid,
       'feed_nid' => 0,
       'id' => 'node_importer',
-    );
-    drupal_write_record('feeds_item', $item);
+      'import_time' => REQUEST_TIME,
+    ))->execute();
   }
 
   /**
    * Tests a very basic import.
    */
-  public function test() {
-    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
+  public function testBasicImport() {
+    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
     $nid = $this->createFeedNode('comment', $url, 'Comment test');
 
     $this->assertText('Created 1 comment');
@@ -98,19 +109,14 @@ class ProcessorWebTest extends \FeedsWebTestCase {
    * Tests authorization.
    */
   public function testAuthorize() {
-    // Create a user with limited permissions. We can't use
-    // $this->drupalCreateUser here because we need to to set a specific user
-    // name.
-    $edit = array(
-      'name' => 'Poor user',
-      'mail' => 'poor@example.com',
-      'pass' => user_password(),
-      'status' => 1,
-    );
+    // Create a user with limited permissions.
+    $account = $this->backdropCreateUser(array(), 'Poor user');
 
-    $account = user_save(drupal_anonymous_user(), $edit);
+    // Ensure the user does NOT have 'post comments' permission.
+    $role = db_query("SELECT rid FROM {users_roles} WHERE uid = :uid", array(':uid' => $account->uid))->fetchField();
+    backdrop_user_role_revoke_permissions($role, array('post comments'));
 
-    // // Adding a mapping to the user_name will invoke authorization.
+    // Adding a mapping to the user_mail will invoke authorization.
     $this->addMappings('comment', array(
       5 => array(
         'source' => 'mail',
@@ -118,16 +124,17 @@ class ProcessorWebTest extends \FeedsWebTestCase {
       ),
     ));
 
-    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
+    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
     $nid = $this->createFeedNode('comment', $url, 'Comment test');
 
     $this->assertText('Failed importing 1 comment');
     $this->assertText('User ' . $account->name . ' is not permitted to post comments.');
     $this->assertEqual(0, db_query("SELECT COUNT(*) FROM {comment}")->fetchField());
 
-    user_role_change_permissions(2, array('post comments' => TRUE));
+    // Grant permission and test again.
+    backdrop_user_role_grant_permissions($role, array('post comments'));
 
-    $this->drupalPost("node/$nid/import", array(), 'Import');
+    $this->backdropPost("node/$nid/import", array(), 'Import');
     $this->assertText('Created 1 comment.');
     $this->assertEqual(1, db_query("SELECT COUNT(*) FROM {comment}")->fetchField());
     $comment = comment_load(1);
@@ -138,7 +145,7 @@ class ProcessorWebTest extends \FeedsWebTestCase {
    * Tests importing existing cids.
    */
   public function testMappingCid() {
-    // // Adding a mapping to the user_name will invoke authorization.
+    // Adding mapping to cid.
     $this->addMappings('comment', array(
       5 => array(
         'source' => 'guid',
@@ -146,7 +153,7 @@ class ProcessorWebTest extends \FeedsWebTestCase {
       ),
     ));
 
-    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
+    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
     $nid = $this->createFeedNode('comment', $url, 'Comment test');
 
     $this->assertText('Created 1 comment.');
@@ -175,7 +182,7 @@ class ProcessorWebTest extends \FeedsWebTestCase {
       ),
     ));
 
-    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
+    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
     $nid = $this->createFeedNode('comment', $url, 'Comment test');
 
     $this->assertText('Created 1 comment');
@@ -199,7 +206,7 @@ class ProcessorWebTest extends \FeedsWebTestCase {
       ),
     ));
 
-    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
+    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
     $nid = $this->createFeedNode('comment', $url, 'Comment test');
 
     $this->assertText('Created 1 comment');
@@ -226,12 +233,12 @@ class ProcessorWebTest extends \FeedsWebTestCase {
       ),
     ));
 
-    $url = $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'feeds_comment_processor') . '/tests/test2.csv';
+    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test2.csv';
     $edit = array(
       'feeds[FeedsHTTPFetcher][source]' => $url,
     );
-    $this->drupalPost("node/$nid/edit", $edit, 'Save');
-    $this->drupalPost("node/$nid/import", array(), 'Import');
+    $this->backdropPost("node/$nid/edit", $edit, 'Save');
+    $this->backdropPost("node/$nid/import", array(), 'Import');
     $this->assertText('Created 1 comment.');
 
     $comment = comment_load(2);
