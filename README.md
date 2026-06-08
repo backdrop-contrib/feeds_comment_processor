@@ -4,7 +4,7 @@
 
 Feeds Comment Processor provides support for creating and updating comments with the Feeds module. The Feeds module provides support for node, user, and taxonomy term imports, but does not include support for comments.
 
-**NOTE: This port is in an early state and needs testing. Use on development server and ensure your data is backed up.**
+**NOTE: This module requires Feeds and together they modify the database. Use on a development server and ensure your data is backed up.**
 
 ## Dependencies
 
@@ -71,9 +71,11 @@ Importing an incorrect or conflicting `thread` value can break the comment displ
 
 **If you don't understand what this is, leave it unmapped.**
 
-## Future plans
+## Integration with Comment Notify module.
 
-Plans include adding integration for the [Comment Notify](https://backdropcms.org/project/comment_notify) module.
+This module does not depend on the [Comment Notify](https://backdropcms.org/project/comment_notify) module. But, if the Comment Notify module is enabled this
+module provides integration for it and supports mapping and importing of the
+comment notify subscription type and creating comment notify records.
 
 The comment_notify integration takes the approach of mapping the notify options
 and using those to set the notified value assuming that where notifications are
