@@ -1,25 +1,17 @@
 <?php
-
 /**
  * @file
- * Update functions for feeds_comment_processor.module.
+ * Install and update functions for feeds_comment_processor.module.
  */
 
 /**
  * Implements hook_enable().
+ *
+ * Clear the Feeds plugin cache so the Comment processor appears immediately
+ * after the module is enabled without requiring a manual cache flush.
  */
 function feeds_comment_processor_enable() {
-  cache_clear_all('plugins:feeds:plugins', 'cache');
+  // Backdrop uses the cache API with named bins. The Feeds module stores its
+  // plugin registry in the default 'cache' bin under this key.
+  cache()->delete('plugins:feeds:plugins');
 }
-
-// TODO The old hook_update_N functions cannot be applied to Backdrop.
-function feeds_comment_processor_update_7101(array &$sandbox) { }
-
-// TODO The old hook_update_N functions cannot be applied to Backdrop.
-function feeds_comment_processor_update_7102() { }
-
-// TODO The old hook_update_N functions cannot be applied to Backdrop.
-function feeds_comment_processor_update_7103() { }
-
-// TODO The old hook_update_N functions cannot be applied to Backdrop.
-function feeds_comment_processor_update_7104(array &$sandbox) { }

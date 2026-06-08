@@ -8,11 +8,11 @@
  * Implements hook_feeds_plugins().
  */
 function feeds_comment_processor_feeds_plugins() {
-  // Explicitly load the include file before defining the plugin.
+  // Explicitly load class file here to ensure plugin is available when Feeds
+  // needs it. Backdrop class registry via files[] in the .info file not enough.
   module_load_include('inc', 'feeds_comment_processor', 'FeedsCommentProcessor');
 
   $info = array();
-
   $info['FeedsCommentProcessor'] = array(
     'name' => 'Comment processor',
     'description' => 'Create and update comments from feed items.',
@@ -26,39 +26,73 @@ function feeds_comment_processor_feeds_plugins() {
     ),
     'entity_type' => 'comment',
   );
-
   return $info;
 }
 
 /**
- * Implements hook_feeds_processor_targets_alter() for feeds comment processor.
+ * Implements hook_feeds_processor_targets_alter().
  *
- * Force bundle to a valid node type to prevent "Missing bundle property" error.
- * Comments need a valid node type as their bundle.
- * Set this to a content type that exists on the site.
+ * When the Feeds module resolves mapping targets for the 'comment' entity type
+ * it needs a valid bundle to load field definitions. We supply the prefixed
+ * bundle name ('comment_node_<type>') derived from the first available content
+ * type so field targets can be discovered correctly.
  *
- * This may indicate an issue with the main Feeds module that may need fixing.
+ * The actual per-comment bundle is always set dynamically in
+ * FeedsCommentProcessor::entityValidate() once the target node is loaded.
  */
 function feeds_comment_processor_feeds_processor_targets_alter(&$targets, $entity_type, &$bundle) {
-  if ($entity_type == 'comment') {
-    $bundle = 'page';
+  if ($entity_type !== 'comment') {
+    return;
+  }
+
+  // If a valid prefixed bundle is already set, leave it alone.
+  if (!empty($bundle) && strpos($bundle, 'comment_node_') === 0) {
+    return;
+  }
+
+  // Derive the bundle from the first available content type.
+  $types = node_type_get_types();
+  if ($types) {
+    $first = key($types);
+    $bundle = 'comment_node_' . $first;
   }
 }
 
 /**
- * Callback to set the comment body value.
+ * Callback to set the comment body field value.
+ *
+ * Follows Feeds callback ($source, $entity, $target, $value, $mapping)
+ *
+ * @param FeedsSource $source
+ *   The feeds source.
+ * @param object $entity
+ *   The comment entity being built.
+ * @param string $target
+ *   The target field name.
+ * @param mixed $value
+ *   The value to set.
+ * @param array $mapping
+ *   The full mapping array, which may contain additional configuration such as
+ *   the text format to use.
  */
-function feeds_comment_processor_set_comment_body_target($comment, $target_name, $value, $source, $importer, $processor) {
-  if (!isset($comment->comment_body)) {
-    $comment->comment_body = array();
+function feeds_comment_processor_set_comment_body_target($source, $entity, $target, $value, $mapping) {
+  $langcode = isset($entity->langcode) ? $entity->langcode : LANGUAGE_NONE;
+
+  // Prefer a format specified in the mapping config; fall back to the
+  // processor's configured format, then to 'filtered_html'.
+  $format = 'filtered_html';
+  if (!empty($mapping['format'])) {
+    $format = $mapping['format'];
+  }
+  elseif ($source->importer->processor instanceof FeedsCommentProcessor) {
+    $config = $source->importer->processor->config;
+    if (!empty($config['input_format'])) {
+      $format = $config['input_format'];
+    }
   }
 
-  $langcode = isset($comment->language) ? $comment->language : LANGUAGE_NONE;
-
-  $format = isset($processor->config['input_format']) ? $processor->config['input_format'] : 'filtered_html';
-
-  $comment->comment_body[$langcode][0] = array(
-    'value' => $value,
+  $entity->comment_body[$langcode][0] = array(
+    'value'  => $value,
     'format' => $format,
   );
 }
