@@ -228,6 +228,43 @@ class FeedsCommentProcessor extends FeedsProcessor {
       }
     }
 
+    // When comment_notify is enabled, suppress notification emails with import.
+    // Bulk-importing historical comments should not trigger new email
+    // notifications to node authors or existing subscribers.
+    // Setting $comment->notified = 1 causes _comment_notify_mailalert() to
+    // return immediately, skipping both the email send and the token_replace()
+    // call on the mail template. That call produces an "Array to string
+    // conversion" notice because the [comment:body] token resolves
+    // $comment->comment_body directly as a field array rather than a scalar.
+    // The notice fires once per distinct node being commented on (from the
+    // node author notification block), not once per comment - so importing
+    // multiple comments on the same node produces only one notice for that
+    // node rather than one per comment.
+    // The comment notify record is still written correctly by
+    // hook_comment_insert(), and saveCommentNotifySettings() then overwrites
+    // it with the mapped notify value immediately after comment_save().
+    if (module_exists('comment_notify')) {
+      // comment_notify's hook_comment_insert() reads two separate properties:
+      //   $comment->notify      - boolean, whether the commenter subscribed
+      //   $comment->notify_type - the subscription type (1 = all comments,
+      //                           2 = replies to this comment only)
+      // Our mapped value uses the same 0/1/2 convention as the {comment_notify}
+      // table's 'notify' column, so we split it into the two properties here.
+      $notify_value = isset($comment->comment_notify_value) ? (int) $comment->comment_notify_value : 0;
+
+      $comment->notify      = $notify_value > 0 ? 1 : 0;
+      $comment->notify_type = $notify_value > 0 ? $notify_value : 1;
+
+      // Set notified based on whether the commenter subscribed. If they
+      // subscribed (notify > 0), this is a historical import so notifications
+      // were already sent in the source system - notified = 1 prevents the
+      // destination site sending duplicate emails and suppresses the
+      // token_replace() notice from comment_notify's mail handler.
+      // If notify = 0 the commenter never subscribed so notified = 0 is
+      // correct - there is nothing to have been notified about.
+      $comment->notified = $notify_value > 0 ? 1 : 0;
+    }
+
     comment_save($comment);
 
     // CommentStorageController::preSave() in Backdrop core unconditionally
@@ -242,6 +279,62 @@ class FeedsCommentProcessor extends FeedsProcessor {
         ->condition('cid', $comment->cid)
         ->execute();
     }
+
+    // After save, overwrite the {comment_notify} row that hook_comment_insert()
+    // created. We do this because comment_save() may reset entity properties
+    // before firing hooks, causing hook_comment_insert() to receive wrong or
+    // missing notify/notify_type values. saveCommentNotifySettings() writes the
+    // correct values directly from our staging property
+    // $comment->comment_notify_value.
+    if (module_exists('comment_notify')) {
+      $this->saveCommentNotifySettings($comment);
+    }
+  }
+
+  /**
+   * Save Comment Notify settings after a comment has been saved.
+   *
+   * This method is only called when the comment_notify module is enabled AND
+   * a 'comment_notify' mapping target value was provided during import.
+   *
+   * @param object $comment
+   *   The comment object that was just saved (cid must be populated).
+   */
+  protected function saveCommentNotifySettings($comment) {
+    if (!db_table_exists('comment_notify')) {
+      return;
+    }
+
+    // hook_comment_insert() in comment_notify has already inserted a row into
+    // {comment_notify} at this point, but it reads $comment->notify_type from
+    // the entity object which may have been reset during comment_save(). We
+    // overwrite the row here with correct values from our staging properties.
+    $notify_value = isset($comment->comment_notify_value) ? (int) $comment->comment_notify_value : 0;
+
+    $notify_data = array(
+      'cid'      => $comment->cid,
+      'notify'   => $notify_value,
+      'notified' => $notify_value > 0 ? 1 : 0,
+    );
+
+    // For anonymous commenters with an email address, generate the
+    // unsubscribe hash using the same method as comment_notify itself.
+    if (empty($comment->uid) && !empty($comment->mail)) {
+      if (!empty($comment->comment_notify_hash)) {
+        $notify_data['notify_hash'] = $comment->comment_notify_hash;
+      }
+      else {
+        $notify_data['notify_hash'] = backdrop_hmac_base64(
+          $comment->mail . $comment->cid,
+          backdrop_get_private_key() . backdrop_get_hash_salt()
+        );
+      }
+    }
+
+    db_merge('comment_notify')
+      ->key(array('cid' => $comment->cid))
+      ->fields($notify_data)
+      ->execute();
   }
 
   /**
@@ -568,6 +661,14 @@ class FeedsCommentProcessor extends FeedsProcessor {
         'description' => t("The comment author's website URL."),
       ),
     );
+
+    // Conditionally load Comment Notify integration targets.
+    // The comment_notify module is an optional dependency; these targets are
+    // only registered when that module is present and enabled.
+    if (module_exists('comment_notify')) {
+      module_load_include('inc', 'feeds_comment_processor', 'comment_notify_feeds');
+      feeds_comment_processor_comment_notify_targets($targets, $this);
+    }
 
     // Ensure all targets have the callback array keys that feeds_ui expects.
     // feeds_ui_mapping_settings_form() iterates these without checking if they
