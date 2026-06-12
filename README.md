@@ -37,6 +37,7 @@ Parent CID for threaded comments this can be mapped to Parent ID by GUID. As
 long as child comments are in a later row and the Parent CID is empty when not
 used Backdrop automatically calculates the correct thread position.
 
+```
 CSV column -> Maps to target
 CID -> GUID
 Parent CID -> Parent ID by GUID
@@ -44,6 +45,7 @@ NID -> Node ID
 Comment Title -> Subject
 Body -> Comment body
 etc. -> etc.
+```
 
 ## Advanced usage
 
