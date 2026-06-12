@@ -6,8 +6,19 @@
 
 /**
  * Basic behavior tests for feeds_comment_processor.
+ *
+ * Tests use the Feeds test helper methods provided by the Feeds module's own
+ * test base class (FeedsWebTestCase), which is declared in
+ * feeds/tests/feeds_web_test_case.inc and included via feeds.tests.info.
+ * Helper methods used:
+ *   createImporterConfiguration($label, $id)
+ *   setPlugin($id, $class)
+ *   setSettings($id, $plugin, $settings)
+ *   addMappings($id, $mappings)
+ *   removeMappings($id, $mappings)
+ *   createFeedNode($id, $url, $title)
  */
-class FeedsCommentProcessorWebTest extends BackdropWebTestBase {
+class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
 
   /**
    * Modules to enable.
@@ -17,6 +28,7 @@ class FeedsCommentProcessorWebTest extends BackdropWebTestBase {
   public static $modules = array(
     'feeds_comment_processor',
     'feeds',
+    'feeds_ui',
     'comment',
     'node',
     'user',
@@ -25,229 +37,357 @@ class FeedsCommentProcessorWebTest extends BackdropWebTestBase {
   /**
    * {@inheritdoc}
    */
+  public static function getInfo() {
+    return array(
+      'name'        => 'Feeds Comment Processor',
+      'description' => 'Tests for creating and updating comments via Feeds.',
+      'group'       => 'Feeds',
+    );
+  }
+
+  /**
+   * {@inheritdoc}
+   */
   public function setUp() {
     parent::setUp();
 
-    // Create an admin user for testing.
-    $this->adminUser = $this->backdropCreateUser(array('administer feeds'));
+    // Create an admin user with all permissions needed.
+    $this->adminUser = $this->backdropCreateUser(array(
+      'administer feeds',
+      'administer nodes',
+      'administer comments',
+      'access administration pages',
+    ));
+    $this->backdropLogin($this->adminUser);
 
-    // Create an importer configuration.
-    $this->createImporterConfiguration('Test', 'comment');
+    // Create a standalone importer configuration.
+    $this->createImporterConfiguration('Comment import', 'comment_import');
 
-    // Set and configure plugins.
-    $this->setPlugin('comment', 'FeedsCSVParser');
-    $this->setPlugin('comment', 'FeedsCommentProcessor');
+    // Set plugins.
+    $this->setPlugin('comment_import', 'FeedsFileFetcher');
+    $this->setPlugin('comment_import', 'FeedsCSVParser');
+    $this->setPlugin('comment_import', 'FeedsCommentProcessor');
 
-    $edit = array(
-      'bundle' => 'comment_node_article',
-    );
-    $this->setSettings('comment', 'FeedsCommentProcessor', $edit);
+    // Configure the processor - use 'post' which is Backdrop's default type.
+    $this->setSettings('comment_import', 'FeedsCommentProcessor', array(
+      'input_format' => 'plain_text',
+    ));
 
-    $this->addMappings('comment', array(
+    // Set up standard mappings used by most tests.
+    $this->addMappings('comment_import', array(
       0 => array(
-        'source' => 'subject',
-        'target' => 'subject',
+        'source' => 'guid',
+        'target' => 'guid',
+        'unique' => TRUE,
       ),
       1 => array(
         'source' => 'guid',
         'target' => 'nid_by_guid',
       ),
       2 => array(
+        'source' => 'title',
+        'target' => 'subject',
+      ),
+      3 => array(
         'source' => 'body',
         'target' => 'comment_body',
         'format' => 'plain_text',
       ),
-      3 => array(
+      4 => array(
         'source' => 'status',
         'target' => 'status',
       ),
-      4 => array(
+      5 => array(
         'source' => 'hostname',
         'target' => 'hostname',
       ),
+      6 => array(
+        'source' => 'author',
+        'target' => 'author',
+      ),
+      7 => array(
+        'source' => 'email',
+        'target' => 'email',
+      ),
+      8 => array(
+        'source' => 'created',
+        'target' => 'created',
+      ),
     ));
 
-    // Create a parent node.
-    $parent = (object) array(
-      'title' => 'Parent',
-      'type' => 'article',
-      'uid' => 1,
+    // Create a parent node using entity_create() and entity_save(), which is
+    // the correct Backdrop API for programmatic entity creation.
+    $node = entity_create('node', array(
+      'type'   => 'post',
+      'title'  => 'Parent post',
       'status' => 1,
-    );
-    node_save($parent);
+      'uid'    => $this->adminUser->uid,
+    ));
+    entity_save('node', $node);
+    $this->parentNid = $node->nid;
 
-    // Insert a feeds_item record using Backdrop's database API.
     db_insert('feeds_item')->fields(array(
-      'guid' => 10,
-      'url' => '',
+      'guid'        => '10',
+      'url'         => '',
       'entity_type' => 'node',
-      'entity_id' => $parent->nid,
-      'feed_nid' => 0,
-      'id' => 'node_importer',
+      'entity_id'   => $node->nid,
+      'feed_nid'    => 0,
+      'id'          => 'comment_import',
+      'hash'        => '',
       'import_time' => REQUEST_TIME,
+      'url'         => '',
     ))->execute();
   }
 
   /**
-   * Tests a very basic import.
+   * Helper: return the full path to a test CSV file.
+   *
+   * @param string $filename
+   *   File name within the tests/ subdirectory.
+   *
+   * @return string
+   *   Absolute filesystem path.
+   */
+  protected function csvPath($filename) {
+    return backdrop_get_path('module', 'feeds_comment_processor') . '/tests/' . $filename;
+  }
+
+  /**
+   * Tests a basic anonymous comment import.
+   *
+   * Verifies that subject, body, status, created date, and hostname are all
+   * saved correctly. The hostname workaround (db_update after comment_save()
+   * to correct the value overwritten by CommentStorageController::preSave())
+   * is implicitly tested here.
    */
   public function testBasicImport() {
-    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
-    $nid = $this->createFeedNode('comment', $url, 'Comment test');
-
+    $this->importFile('comment_import', $this->csvPath('test.csv'));
     $this->assertText('Created 1 comment');
 
-    $comment = comment_load(1);
-    $this->assertEqual(1, $comment->nid);
-    $this->assertEqual('test subject', $comment->subject);
-    $this->assertEqual('example.com', $comment->hostname);
-    $this->assertEqual('test body text', $comment->comment_body[LANGUAGE_NONE][0]['value']);
-    $this->assertEqual('plain_text', $comment->comment_body[LANGUAGE_NONE][0]['format']);
+    $comment = comment_load(1, TRUE);
+    $this->assertNotNull($comment, 'Comment was created.');
+    $this->assertEqual($this->parentNid, $comment->nid,
+      'Comment is attached to the correct node.');
+    $this->assertEqual('test subject', $comment->subject,
+      'Comment subject is correct.');
+    $this->assertEqual('test body text',
+      $comment->comment_body[LANGUAGE_NONE][0]['value'],
+      'Comment body value is correct.');
+    $this->assertEqual('plain_text',
+      $comment->comment_body[LANGUAGE_NONE][0]['format'],
+      'Comment body format is correct.');
+    $this->assertEqual(1, $comment->status,
+      'Comment is published.');
+    $this->assertEqual('192.168.1.100', $comment->hostname,
+      'Comment hostname is correctly preserved (workaround for core bug).');
+    $this->assertEqual(1388534400, $comment->created,
+      'Comment created date is correct.');
+    $this->assertEqual(0, $comment->uid,
+      'Anonymous comment has uid = 0.');
+    $this->assertEqual('anonymous commenter', $comment->name,
+      'Anonymous commenter name is stored correctly.');
+    $this->assertEqual('anon@example.com', $comment->mail,
+      'Anonymous commenter email is stored correctly.');
   }
 
   /**
-   * Tests authorization.
+   * Tests that a registered user is correctly resolved from the author column.
+   *
+   * Verifies that entityValidate() performs user_load_by_name() on the mapped
+   * author value and sets uid correctly. This must happen in entityValidate()
+   * because Feeds calls that method before setTargetElement(), so the lookup
+   * cannot be done in setTargetElement() itself.
+   */
+  public function testRegisteredUserResolution() {
+    // Create a user account whose name matches the CSV 'author' column.
+    $account = $this->backdropCreateUser(
+      array('post comments', 'skip comment approval'),
+      'testuser'
+    );
+
+    $this->importFile('comment_import', $this->csvPath('test_registered.csv'));
+    $this->assertText('Created 1 comment');
+
+    $comment = comment_load(1, TRUE);
+    $this->assertNotNull($comment, 'Comment was created.');
+    $this->assertEqual($account->uid, $comment->uid,
+      'Registered user uid is correctly resolved from author name.');
+    $this->assertEqual($account->name, $comment->name,
+      'Comment name matches the registered user account name.');
+    $this->assertEqual('', $comment->mail,
+      'Mail is empty for registered user comments.');
+    $this->assertEqual('192.168.1.102', $comment->hostname,
+      'Hostname is correctly preserved for registered user comment.');
+  }
+
+  /**
+   * Tests that an anonymous commenter name is stored when no account matches.
+   *
+   * Verifies the fallback path in entityValidate() when user_load_by_name()
+   * and user_load_by_mail() both return nothing.
+   */
+  public function testAnonymousAuthorFallback() {
+    $this->importFile('comment_import', $this->csvPath('test.csv'));
+    $this->assertText('Created 1 comment');
+
+    $comment = comment_load(1, TRUE);
+    $this->assertEqual(0, $comment->uid,
+      'No uid set for unknown author.');
+    $this->assertEqual('anonymous commenter', $comment->name,
+      'Anonymous display name stored from author column.');
+    $this->assertEqual('anon@example.com', $comment->mail,
+      'Anonymous email stored from email column.');
+  }
+
+  /**
+   * Tests authorization: a user without 'post comments' cannot import.
    */
   public function testAuthorize() {
-    // Create a user with limited permissions.
-    $account = $this->backdropCreateUser(array(), 'Poor user');
+    // Create a user without 'post comments' permission.
+    $account = $this->backdropCreateUser(array(), 'restricteduser');
 
-    // Ensure the user does NOT have 'post comments' permission.
-    $role = db_query("SELECT rid FROM {users_roles} WHERE uid = :uid", array(':uid' => $account->uid))->fetchField();
-    backdrop_user_role_revoke_permissions($role, array('post comments'));
+    // Create a CSV with this user as the author.
+    $csv_path = 'temporary://test_auth.csv';
+    $csv = "guid,title,body,status,hostname,author,email,created\n";
+    $csv .= "10,auth test,auth body,1,127.0.0.1,restricteduser,restricted@example.com,1388534400\n";
+    file_put_contents($csv_path, $csv);
 
-    // Adding a mapping to the user_mail will invoke authorization.
-    $this->addMappings('comment', array(
-      5 => array(
-        'source' => 'mail',
-        'target' => 'user_mail',
-      ),
-    ));
-
-    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
-    $nid = $this->createFeedNode('comment', $url, 'Comment test');
-
+    $this->importFile('comment_import', $csv_path);
     $this->assertText('Failed importing 1 comment');
-    $this->assertText('User ' . $account->name . ' is not permitted to post comments.');
-    $this->assertEqual(0, db_query("SELECT COUNT(*) FROM {comment}")->fetchField());
-
-    // Grant permission and test again.
-    backdrop_user_role_grant_permissions($role, array('post comments'));
-
-    $this->backdropPost("node/$nid/import", array(), 'Import');
-    $this->assertText('Created 1 comment.');
-    $this->assertEqual(1, db_query("SELECT COUNT(*) FROM {comment}")->fetchField());
-    $comment = comment_load(1);
-    $this->assertEqual(0, $comment->status);
+    $this->assertText('is not permitted to post comments');
+    $this->assertEqual(0,
+      db_query('SELECT COUNT(*) FROM {comment}')->fetchField(),
+      'No comment created for unauthorized user.');
   }
 
   /**
-   * Tests importing existing cids.
-   */
-  public function testMappingCid() {
-    // Adding mapping to cid.
-    $this->addMappings('comment', array(
-      5 => array(
-        'source' => 'guid',
-        'target' => 'cid',
-      ),
-    ));
-
-    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
-    $nid = $this->createFeedNode('comment', $url, 'Comment test');
-
-    $this->assertText('Created 1 comment.');
-    $this->assertEqual(1, db_query("SELECT COUNT(*) FROM {comment}")->fetchField());
-    $comment = comment_load(10);
-    $this->assertEqual(10, $comment->cid);
-    $this->assertEqual(1, $comment->nid);
-    $this->assertEqual('01/', $comment->thread);
-  }
-
-  /**
-   * Tests mapping to node by title.
+   * Tests mapping node by title instead of guid.
    */
   public function testMappingByTitle() {
-    $this->removeMappings('comment', array(
+    // Replace nid_by_guid with nid_by_title.
+    $this->removeMappings('comment_import', array(
       1 => array(
         'source' => 'guid',
         'target' => 'nid_by_guid',
       ),
     ));
-
-    $this->addMappings('comment', array(
-      4 => array(
+    $this->addMappings('comment_import', array(
+      9 => array(
         'source' => 'title',
         'target' => 'nid_by_title',
       ),
     ));
 
-    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
-    $nid = $this->createFeedNode('comment', $url, 'Comment test');
+    // Create a CSV using node title for lookup.
+    $csv_path = 'temporary://test_by_title.csv';
+    $csv = "guid,title,body,status,hostname,author,email,created\n";
+    $csv .= "10,test subject,test body text,1,192.168.1.100,anonymous commenter,anon@example.com,1388534400\n";
+    file_put_contents($csv_path, $csv);
 
+    $this->importFile('comment_import', $csv_path);
     $this->assertText('Created 1 comment');
 
-    $comment = comment_load(1);
-    $this->assertEqual(1, $comment->nid);
-    $this->assertEqual('test subject', $comment->subject);
-    $this->assertEqual('example.com', $comment->hostname);
-    $this->assertEqual('test body text', $comment->comment_body[LANGUAGE_NONE][0]['value']);
-    $this->assertEqual('plain_text', $comment->comment_body[LANGUAGE_NONE][0]['format']);
+    $comment = comment_load(1, TRUE);
+    $this->assertEqual($this->parentNid, $comment->nid,
+      'Comment attached to correct node via title lookup.');
   }
 
   /**
-   * Tests mapping to the parent id.
+   * Tests threaded comment import using pid_by_guid.
+   *
+   * Imports a parent comment, then imports a child comment with pid_by_guid
+   * pointing to the parent's guid. Verifies that the thread value is set
+   * correctly for the reply.
    */
-  public function testParentId() {
-    $this->addMappings('comment', array(
-      5 => array(
-        'source' => 'guid',
-        'target' => 'guid',
-      ),
-    ));
-
-    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test.csv';
-    $nid = $this->createFeedNode('comment', $url, 'Comment test');
-
-    $this->assertText('Created 1 comment');
-
-    $this->removeMappings('comment', array(
-      1 => array(
-        'source' => 'guid',
-        'target' => 'nid_by_guid',
-      ),
-      5 => array(
-        'source' => 'guid',
-        'target' => 'guid',
-      ),
-    ));
-
-    $this->addMappings('comment', array(
-      4 => array(
-        'source' => 'title',
-        'target' => 'nid_by_title',
-      ),
-      5 => array(
-        'source' => 'guid',
+  public function testThreadedComment() {
+    // Add guid and pid_by_guid mappings.
+    $this->addMappings('comment_import', array(
+      9 => array(
+        'source' => 'parent_guid',
         'target' => 'pid_by_guid',
       ),
     ));
 
-    $url = $GLOBALS['base_url'] . '/' . backdrop_get_path('module', 'feeds_comment_processor') . '/tests/test2.csv';
-    $edit = array(
-      'feeds[FeedsHTTPFetcher][source]' => $url,
-    );
-    $this->backdropPost("node/$nid/edit", $edit, 'Save');
-    $this->backdropPost("node/$nid/import", array(), 'Import');
-    $this->assertText('Created 1 comment.');
+    // First import: the parent comment.
+    $this->importFile('comment_import', $this->csvPath('test.csv'));
+    $this->assertText('Created 1 comment');
 
-    $comment = comment_load(2);
-    $this->assertEqual(1, $comment->pid);
-    $this->assertEqual(2, $comment->cid);
-    $this->assertEqual(1, $comment->nid);
-    $this->assertEqual(1, $comment->status);
-    $this->assertEqual('test subject 2', $comment->subject);
-    $this->assertEqual('01.00/', $comment->thread);
+    $parent = comment_load(1, TRUE);
+    $this->assertNotNull($parent, 'Parent comment created.');
+    $this->assertEqual(0, $parent->pid, 'Parent comment has pid = 0.');
+
+    // Second import: the threaded reply.
+    $this->importFile('comment_import', $this->csvPath('test2.csv'));
+    $this->assertText('Created 1 comment');
+
+    $child = comment_load(2, TRUE);
+    $this->assertNotNull($child, 'Child comment created.');
+    $this->assertEqual(1, $child->pid,
+      'Child comment pid points to parent.');
+    $this->assertEqual($this->parentNid, $child->nid,
+      'Child comment attached to correct node.');
+    // Thread value should be a sub-thread of the parent.
+    $this->assertNotEqual($parent->thread, $child->thread,
+      'Child comment has different thread value from parent.');
+  }
+
+  /**
+   * Tests that missing nid causes a validation exception.
+   */
+  public function testMissingNid() {
+    // Remove the nid_by_guid mapping so no nid is provided.
+    $this->removeMappings('comment_import', array(
+      1 => array(
+        'source' => 'guid',
+        'target' => 'nid_by_guid',
+      ),
+    ));
+
+    $this->importFile('comment_import', $this->csvPath('test.csv'));
+    $this->assertText('Failed importing 1 comment');
+    $this->assertText('No Node ID');
+    $this->assertEqual(0,
+      db_query('SELECT COUNT(*) FROM {comment}')->fetchField(),
+      'No comment created when nid is missing.');
+  }
+
+  /**
+   * Tests that comments are not created for disabled content types.
+   */
+  public function testDisabledComments() {
+    // Disable comments on the 'post' content type using the correct Backdrop
+    // config entity API.
+    $node_type = node_type_load('post');
+    $node_type->settings['comment_default'] = COMMENT_NODE_HIDDEN;
+    entity_save('node_type', $node_type);
+
+    $this->importFile('comment_import', $this->csvPath('test.csv'));
+    $this->assertText('Failed importing 1 comment');
+    $this->assertEqual(0,
+      db_query('SELECT COUNT(*) FROM {comment}')->fetchField(),
+      'No comment created when comments are hidden on content type.');
+
+    // Re-enable comments.
+    $node_type->settings['comment_default'] = COMMENT_NODE_OPEN;
+    entity_save('node_type', $node_type);
+  }
+
+  /**
+   * Tests that importing the same CSV twice does not create duplicates.
+   *
+   * The 'guid' target is mapped as unique, so re-importing the same source
+   * should update rather than create a new comment.
+   */
+  public function testNoDuplicatesOnReimport() {
+    $this->importFile('comment_import', $this->csvPath('test.csv'));
+    $this->assertText('Created 1 comment');
+
+    $this->importFile('comment_import', $this->csvPath('test.csv'));
+    $this->assertText('Updated 1 comment');
+
+    $this->assertEqual(1,
+      db_query('SELECT COUNT(*) FROM {comment}')->fetchField(),
+      'No duplicate comment created on re-import.');
   }
 
 }

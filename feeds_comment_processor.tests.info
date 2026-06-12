@@ -1,5 +1,5 @@
 [FeedsCommentProcessorWebTest]
-name = Feeds Comment Processor Web Test
-description = Tests the UI and import functionality of the Feeds Comment Processor.
-group = Feeds Comment Processor
+name = Feeds Comment Processor
+description = Tests for creating and updating comments via Feeds, including author resolution, hostname preservation, threading, authorization, and validation.
+group = Feeds
 file = feeds_comment_processor.test
