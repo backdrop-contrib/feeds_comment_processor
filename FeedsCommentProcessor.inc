@@ -267,10 +267,47 @@ class FeedsCommentProcessor extends FeedsProcessor {
 
     comment_save($comment);
 
+    // CommentStorageController uses db_update() to maintain {node_comment_statistics},
+    // which silently fails if the row doesn't exist (see core issue
+    // https://github.com/backdrop/backdrop-issues/issues/5870). This causes
+    // comment bodies to be excluded from search indexing since
+    // comment_node_update_index() relies on this table. We use db_merge() to
+    // ensure the row always exists and is correct after import.
+    $last_comment = db_query('SELECT cid, changed, uid, name FROM {comment} WHERE nid = :nid AND status = :status ORDER BY created DESC LIMIT 1', array(
+      ':nid'    => $comment->nid,
+      ':status' => COMMENT_PUBLISHED,
+    ))->fetchObject();
+    $count = db_query('SELECT COUNT(cid) FROM {comment} WHERE nid = :nid AND status = :status', array(
+      ':nid'    => $comment->nid,
+      ':status' => COMMENT_PUBLISHED,
+    ))->fetchField();
+    if ($last_comment) {
+      db_merge('node_comment_statistics')
+        ->key(array('nid' => $comment->nid))
+        ->fields(array(
+          'nid'                    => $comment->nid,
+          'cid'                    => $last_comment->cid,
+          'last_comment_timestamp' => $last_comment->changed,
+          'last_comment_name'      => $last_comment->uid ? '' : $last_comment->name,
+          'last_comment_uid'       => $last_comment->uid,
+          'comment_count'          => $count,
+        ))
+        ->execute();
+    }
+
+    // Flag the parent node for re-indexing so the imported comment body is
+    // included in the next search index update. This is independent of the
+    // {node_comment_statistics} update above - search_touch_node() should run
+    // for every saved comment regardless of whether the statistics merge found
+    // a row to write.
+    if (module_exists('search')) {
+      search_touch_node($comment->nid);
+    }
+
     // CommentStorageController::preSave() in Backdrop core unconditionally
     // overwrites $comment->hostname with ip_address() (the current request IP),
     // ignoring any hostname value set on the object before comment_save().
-    // This is a core bug — see https://github.com/backdrop/backdrop-issues.
+    // See core issue https://github.com/backdrop/backdrop-issues/issues/7151.
     // As a workaround, write the mapped hostname directly to the database after
     // comment_save() if one was explicitly provided in the import source.
     if (!empty($comment->hostname_original)) {
