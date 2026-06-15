@@ -26,6 +26,8 @@ For example: Name = Comment import; Description = Comments import from CSV file.
 4. Go to Comment processor mapping and configure source and targets, see below.
 5. Configure other settings as required.
 
+After running an import it may be helpful to check the watchdog log for messages.
+
 ## Comment mapping
 
 The Comment ID (CID) in the source is generally not mapped to the CID in the
@@ -46,6 +48,13 @@ Comment Title -> Subject
 Body -> Comment body
 etc. -> etc.
 ```
+
+## Search indexing
+
+When new comments are imported or comments are updated with import, the search
+indexing indicator is updated for the corresponding nodes to ensure they are
+included on the next run of the search index update. This should avoid the need
+to completely rebuild the search index.
 
 ## Advanced usage
 
@@ -83,6 +92,51 @@ The comment_notify integration takes the approach of mapping the notify options
 and using those to set the notified value assuming that where notifications are
 enabled they were already notified by the source system and the notified value
 is set to 1. This avoids the destination system resending email.
+
+## Known issues
+
+### Notices with comment_notify enabled
+
+When importing comments with the comment_notify module enabled notices may
+appear several times in the watchdog log:
+
+```
+Notice: Array to string conversion in token_replace() (line 101 of /core/includes/token.inc).
+```
+Followed by an entry that notification email was sent **although sending of
+email is suppressed by this module** and does not occur. This may be triggered
+by specific comments and the number of entries relate to the number of previous
+comments in that thread subscribed to notifications.
+
+These entries are harmless as the comments are imported correctly and the
+comment_notify table is correct.
+
+The notices regarding the array to string conversion is related to the
+comment_notify module, see issue https://github.com/backdrop-contrib/comment_notify/issues/8
+
+### Feeds issue entityValidate called before target mappings
+
+In the Feeds module `FeedsProcessor::process()` calls `entityValidate()` before
+target mappings have been applied to the entity via `setTargetElement()`. This
+module works around the unexpected ordering by duplicating the logic in
+`entitySave()`. See https://github.com/backdrop-contrib/feeds/issues/178
+
+### Backdrop core issue with hostname
+
+Backdrop `CommentStorageController::preSave()` unconditionally overwrites hostname with current request IP, see issue https://github.com/backdrop/backdrop-issues/issues/7151.
+
+This module includes a `db_update()` workaround. When a fix is committed to
+Backdrop core the workaround in this module will become a harmless redundancy
+that can be removed.
+
+### Backdrop core issue with node_comment_statistics
+
+Backdrop `CommentStorageController` uses `db_update()` to maintain
+`{node_comment_statistics}`, that silently fails if the row doesn't exist (see
+core issue https://github.com/backdrop/backdrop-issues/issues/5870). This causes
+comment bodies to be excluded from search indexing since
+`comment_node_update_index()` relies on this table. This module uses `db_merge()`
+to ensure the row always exists and is correct after import.
 
 ## Documentation
 
