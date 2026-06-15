@@ -265,7 +265,15 @@ class FeedsCommentProcessor extends FeedsProcessor {
       $comment->notified = $notify_value > 0 ? 1 : 0;
     }
 
+    // Suppress comment_notify emails during import. _comment_notify_mailalert()
+    // runs during hook_comment_insert() for any comment with a mapped
+    // subscription type, regardless of $comment->notified set above. The
+    // feeds_comment_processor_mail_alter() implementation in
+    // feeds_comment_processor.module checks this flag and cancels delivery of
+    // any comment_notify mail via hook_mail_alter().
+    feeds_comment_processor_importing(TRUE);
     comment_save($comment);
+    feeds_comment_processor_importing(FALSE);
 
     // CommentStorageController uses db_update() to maintain {node_comment_statistics},
     // which silently fails if the row doesn't exist (see core issue

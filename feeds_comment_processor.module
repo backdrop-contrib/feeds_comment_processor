@@ -59,6 +59,52 @@ function feeds_comment_processor_feeds_processor_targets_alter(&$targets, $entit
 }
 
 /**
+ * Implements hook_mail_alter().
+ *
+ * Cancels comment_notify emails while a Feeds comment import is in progress.
+ *
+ * _comment_notify_mailalert() runs during hook_comment_insert() for any
+ * comment with a mapped subscription type (notify > 0), regardless of the
+ * $comment->notified value set in FeedsCommentProcessor::entitySave(). This
+ * means historical comments imported via Feeds can trigger real "new comment"
+ * or "subscription confirmed" emails to real recipients — not appropriate for
+ * a bulk historical import.
+ *
+ * feeds_comment_processor_importing() is toggled around comment_save() in
+ * FeedsCommentProcessor::entitySave(). When set, this hook cancels delivery
+ * of any comment_notify mail by setting $message['send'] = FALSE.
+ *
+ * Note: this prevents the email from being delivered, but does not suppress
+ * the "Array to string conversion" notice or the watchdog('comment_notify',
+ * 'Notified: ...') log entry — both occur during message construction inside
+ * _comment_notify_mailalert(), before this hook is invoked. See the upstream
+ * comment_notify issue for those.
+ */
+function feeds_comment_processor_mail_alter(&$message) {
+  if ($message['module'] == 'comment_notify' && feeds_comment_processor_importing()) {
+    $message['send'] = FALSE;
+  }
+}
+
+/**
+ * Gets or sets a static flag indicating a Feeds comment import is in progress.
+ *
+ * @param bool|null $set
+ *   If TRUE or FALSE, sets the flag to that value. If NULL (default), only
+ *   returns the current value without changing it.
+ *
+ * @return bool
+ *   The current value of the flag.
+ */
+function feeds_comment_processor_importing($set = NULL) {
+  $importing = &backdrop_static(__FUNCTION__, FALSE);
+  if (isset($set)) {
+    $importing = $set;
+  }
+  return $importing;
+}
+
+/**
  * Callback to set the comment body field value.
  *
  * Follows Feeds callback ($source, $entity, $target, $value, $mapping)
