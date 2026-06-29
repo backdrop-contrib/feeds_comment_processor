@@ -245,9 +245,9 @@ class FeedsCommentProcessor extends FeedsProcessor {
     // it with the mapped notify value immediately after comment_save().
     if (module_exists('comment_notify')) {
       // comment_notify's hook_comment_insert() reads two separate properties:
-      //   $comment->notify      - boolean, whether the commenter subscribed
-      //   $comment->notify_type - the subscription type (1 = all comments,
-      //                           2 = replies to this comment only)
+      // $comment->notify      - boolean, whether the commenter subscribed
+      // $comment->notify_type - the subscription type
+      // (1 = all comments, 2 = replies to this comment only)
       // Our mapped value uses the same 0/1/2 convention as the {comment_notify}
       // table's 'notify' column, so we split it into the two properties here.
       $notify_value = isset($comment->comment_notify_value) ? (int) $comment->comment_notify_value : 0;
@@ -275,7 +275,8 @@ class FeedsCommentProcessor extends FeedsProcessor {
     comment_save($comment);
     feeds_comment_processor_importing(FALSE);
 
-    // CommentStorageController uses db_update() to maintain {node_comment_statistics},
+    // CommentStorageController uses db_update() to maintain
+    // {node_comment_statistics},
     // which silently fails if the row doesn't exist (see core issue
     // https://github.com/backdrop/backdrop-issues/issues/5870). This causes
     // comment bodies to be excluded from search indexing since

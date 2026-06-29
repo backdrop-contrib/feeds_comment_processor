@@ -134,7 +134,7 @@ function feeds_comment_processor_importing($set = NULL) {
  *   The full mapping array, which may contain additional configuration such as
  *   the text format to use.
  */
-function feeds_comment_processor_set_comment_body_target($source, $entity, $target, $value, $mapping) {
+function feeds_comment_processor_set_comment_body_target(FeedsSource $source, $entity, $target, $value, array $mapping) {
   $langcode = isset($entity->langcode) ? $entity->langcode : LANGUAGE_NONE;
 
   // Prefer a format specified in the mapping config; fall back to the
