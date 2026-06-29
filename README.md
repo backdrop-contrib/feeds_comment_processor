@@ -19,12 +19,13 @@ Install this module using the official Backdrop CMS instructions at https://back
 
 After enabling this module:
 1. Add importer.
-Go to Feeds importers at admin/structure/feeds and click "Add importer".
-For example: Name = Comment import; Description = Comments import from CSV file.
-2. Under Processor, select Comment processor.
-3. Review Comment processor settings and configure as required.
-4. Go to Comment processor mapping and configure source and targets, see below.
-5. Configure other settings as required.
+- Go to Feeds importers at admin/structure/feeds and click "Add importer".
+- For example: Name = Comment import; Description = Comments import from CSV file.
+2. In Basic settings set "Periodic import" to "Off".
+3. Under Processor, select Comment processor.
+4. Review Comment processor settings and configure as required.
+5. Go to Comment processor mapping and configure source and targets, see below.
+6. Configure other settings as required.
 
 After running an import it may be helpful to check the watchdog log for messages.
 
@@ -37,7 +38,10 @@ let Backdrop assign the CID with automatic incrementing.
 However, the source CID can be mapped to GUID, and if the source includes the
 Parent CID for threaded comments this can be mapped to Parent ID by GUID. As
 long as child comments are in a later row and the Parent CID is empty when not
-used Backdrop automatically calculates the correct thread position.
+used, Backdrop automatically calculates the correct thread position.
+
+When mapping to GUID ensure the "Target configuration" settings are set to
+"Used as unique" to avoid duplicating comments on subsequent rerun of import.
 
 ```
 CSV column -> Maps to target
