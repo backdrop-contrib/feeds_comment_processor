@@ -16,7 +16,7 @@
  *   setSettings($id, $plugin, $settings)
  *   addMappings($id, $mappings)
  *   removeMappings($id, $mappings)
- *   createFeedNode($id, $url, $title)
+ *   importFile($id, $path)
  */
 class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
 
@@ -32,6 +32,7 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
     'comment',
     'node',
     'user',
+    'search',
   );
 
   /**
@@ -57,6 +58,8 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
       'administer nodes',
       'administer comments',
       'access administration pages',
+      'search content',
+      'access comments',
     ));
     $this->backdropLogin($this->adminUser);
 
@@ -68,7 +71,7 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
     $this->setPlugin('comment_import', 'FeedsCSVParser');
     $this->setPlugin('comment_import', 'FeedsCommentProcessor');
 
-    // Configure the processor - use 'post' which is Backdrop's default type.
+    // Configure the processor.
     $this->setSettings('comment_import', 'FeedsCommentProcessor', array(
       'input_format' => 'plain_text',
     ));
@@ -135,7 +138,6 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
       'id'          => 'comment_import',
       'hash'        => '',
       'import_time' => REQUEST_TIME,
-      'url'         => '',
     ))->execute();
   }
 
@@ -240,13 +242,12 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
   }
 
   /**
-   * Tests authorization: a user without 'post comments' cannot import.
+   * Tests authorization: a user without post comments permission cannot import.
    */
   public function testAuthorize() {
     // Create a user without 'post comments' permission.
     $account = $this->backdropCreateUser(array(), 'restricteduser');
 
-    // Create a CSV with this user as the author.
     $csv_path = 'temporary://test_auth.csv';
     $csv = "guid,title,body,status,hostname,author,email,created\n";
     $csv .= "10,auth test,auth body,1,127.0.0.1,restricteduser,restricted@example.com,1388534400\n";
@@ -264,7 +265,6 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
    * Tests mapping node by title instead of guid.
    */
   public function testMappingByTitle() {
-    // Replace nid_by_guid with nid_by_title.
     $this->removeMappings('comment_import', array(
       1 => array(
         'source' => 'guid',
@@ -278,10 +278,9 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
       ),
     ));
 
-    // Create a CSV using node title for lookup.
     $csv_path = 'temporary://test_by_title.csv';
     $csv = "guid,title,body,status,hostname,author,email,created\n";
-    $csv .= "10,test subject,test body text,1,192.168.1.100,anonymous commenter,anon@example.com,1388534400\n";
+    $csv .= "10,Parent post,test body text,1,192.168.1.100,anonymous commenter,anon@example.com,1388534400\n";
     file_put_contents($csv_path, $csv);
 
     $this->importFile('comment_import', $csv_path);
@@ -295,12 +294,10 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
   /**
    * Tests threaded comment import using pid_by_guid.
    *
-   * Imports a parent comment, then imports a child comment with pid_by_guid
-   * pointing to the parent's guid. Verifies that the thread value is set
-   * correctly for the reply.
+   * Imports a parent comment then a child comment with pid_by_guid pointing
+   * to the parent's guid. Verifies that the thread value is set correctly.
    */
   public function testThreadedComment() {
-    // Add guid and pid_by_guid mappings.
     $this->addMappings('comment_import', array(
       9 => array(
         'source' => 'parent_guid',
@@ -326,7 +323,6 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
       'Child comment pid points to parent.');
     $this->assertEqual($this->parentNid, $child->nid,
       'Child comment attached to correct node.');
-    // Thread value should be a sub-thread of the parent.
     $this->assertNotEqual($parent->thread, $child->thread,
       'Child comment has different thread value from parent.');
   }
@@ -335,7 +331,6 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
    * Tests that missing nid causes a validation exception.
    */
   public function testMissingNid() {
-    // Remove the nid_by_guid mapping so no nid is provided.
     $this->removeMappings('comment_import', array(
       1 => array(
         'source' => 'guid',
@@ -352,10 +347,10 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
   }
 
   /**
-   * Tests that comments are not created for disabled content types.
+   * Tests that comments are not created for hidden content types.
    */
-  public function testDisabledComments() {
-    // Disable comments on the 'post' content type using the correct Backdrop
+  public function testHiddenComments() {
+    // Hide comments on the 'post' content type using the correct Backdrop
     // config entity API.
     $node_type = node_type_load('post');
     $node_type->settings['comment_default'] = COMMENT_NODE_HIDDEN;
@@ -388,6 +383,87 @@ class FeedsCommentProcessorWebTest extends FeedsWebTestCase {
     $this->assertEqual(1,
       db_query('SELECT COUNT(*) FROM {comment}')->fetchField(),
       'No duplicate comment created on re-import.');
+  }
+
+  /**
+   * Tests that {node_comment_statistics} is correctly updated after import.
+   *
+   * comment_save() uses db_update() to maintain this table which silently
+   * fails if the row does not exist. Our entitySave() uses db_merge() to
+   * ensure the row is always correct, which is required for search indexing
+   * to include comment bodies.
+   */
+  public function testNodeCommentStatisticsUpdated() {
+    $this->importFile('comment_import', $this->csvPath('test.csv'));
+    $this->assertText('Created 1 comment');
+
+    $stats = db_query('SELECT comment_count FROM {node_comment_statistics} WHERE nid = :nid',
+      array(':nid' => $this->parentNid))->fetchField();
+
+    $this->assertEqual(1, $stats,
+      '{node_comment_statistics}.comment_count is correctly updated after import.');
+  }
+
+  /**
+   * Tests that the parent node is flagged for search re-indexing after import.
+   *
+   * search_touch_node() is called in entitySave() so that comment bodies are
+   * included in the next search index update without requiring a full rebuild.
+   */
+  public function testSearchTouchNodeOnImport() {
+    // Ensure a search_dataset row exists for the parent node.
+    db_merge('search_dataset')
+      ->key(array('sid' => $this->parentNid, 'type' => 'node'))
+      ->fields(array(
+        'sid'     => $this->parentNid,
+        'type'    => 'node',
+        'data'    => '',
+        'reindex' => 0,
+      ))
+      ->execute();
+
+    $this->importFile('comment_import', $this->csvPath('test.csv'));
+    $this->assertText('Created 1 comment');
+
+    $reindex = db_query('SELECT reindex FROM {search_dataset} WHERE sid = :sid AND type = :type',
+      array(':sid' => $this->parentNid, ':type' => 'node'))->fetchField();
+
+    $this->assertNotEqual(0, $reindex,
+      'Parent node is flagged for search re-indexing after comment import.');
+  }
+
+  /**
+   * Tests that the hostname is correctly preserved after import.
+   *
+   * CommentStorageController::preSave() unconditionally overwrites
+   * $comment->hostname with the current request IP. entitySave() corrects
+   * this with a db_update() after comment_save() when hostname_original is set.
+   * See core issue https://github.com/backdrop/backdrop-issues/issues/7151.
+   */
+  public function testHostnamePreserved() {
+    $this->importFile('comment_import', $this->csvPath('test.csv'));
+    $this->assertText('Created 1 comment');
+
+    $hostname = db_query('SELECT hostname FROM {comment} WHERE cid = 1')->fetchField();
+    $this->assertEqual('192.168.1.100', $hostname,
+      'Hostname is preserved after import despite core CommentStorageController::preSave() overwrite.');
+  }
+
+  /**
+   * Tests the guid mapping uniqueness via the cogwheel UI.
+   *
+   * Verifies that getMappingTargets() correctly calls getHookTargets() which
+   * wires up the Feeds UI AJAX cogwheel for the optional_unique guid target.
+   * The cogwheel requires hook_init() to load FeedsCommentProcessor before
+   * Backdrop's form API deserializes the form state in the AJAX callback.
+   */
+  public function testGuidTargetOptionalUnique() {
+    $targets = feeds_importer('comment_import')->processor->getMappingTargets();
+
+    $this->assertTrue(isset($targets['guid']),
+      'guid target is registered in getMappingTargets().');
+    $this->assertTrue(!empty($targets['guid']['optional_unique']),
+      'guid target has optional_unique set, enabling the cogwheel UI.');
   }
 
 }
