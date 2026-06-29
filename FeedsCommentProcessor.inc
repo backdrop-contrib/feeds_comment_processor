@@ -715,6 +715,16 @@ class FeedsCommentProcessor extends FeedsProcessor {
       feeds_comment_processor_comment_notify_targets($targets, $this);
     }
 
+    // Invoke alter hooks to wire up the Feeds UI AJAX cogwheel for
+    // optional_unique targets including 'guid' from the parent class.
+    // This follows the same pattern as FeedsNodeProcessor::getMappingTargets().
+    // Without this call, the optional_unique cogwheel does not function for
+    // the comment entity type - clicking it has no effect and 'unique' is
+    // never saved to the mapping config, causing duplicate comments on
+    // re-import. The parent::getMappingTargets() only returns base targets
+    // (url, guid) but does NOT call getHookTargets() itself.
+    $this->getHookTargets($targets);
+
     // Ensure all targets have the callback array keys that feeds_ui expects.
     // feeds_ui_mapping_settings_form() iterates these without checking if they
     // exist, causing notices and warnings if they are absent.

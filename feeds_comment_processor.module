@@ -30,6 +30,19 @@ function feeds_comment_processor_feeds_plugins() {
 }
 
 /**
+ * Implements hook_init().
+ *
+ * Ensure FeedsCommentProcessor class is loaded early enough that Backdrop's
+ * form API can deserialize the form state during AJAX callbacks. Without this,
+ * the AJAX callback for the mapping settings cogwheel fails with a fatal error:
+ * "tried to execute a method on an incomplete object" because the class
+ * definition is not available when unserialize() is called on the form state.
+ */
+function feeds_comment_processor_init() {
+  module_load_include('inc', 'feeds_comment_processor', 'FeedsCommentProcessor');
+}
+
+/**
  * Implements hook_feeds_processor_targets_alter().
  *
  * When the Feeds module resolves mapping targets for the 'comment' entity type
