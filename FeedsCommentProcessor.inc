@@ -46,7 +46,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
    * dynamically in entityValidate() once the target node is known.
    */
   public function bundle() {
-    $node_type = isset($this->config['node_type']) ? $this->config['node_type'] : '';
+    $node_type = $this->config['node_type'] ?? '';
     if ($node_type) {
       // Strip any existing prefix so we don't double-prefix.
       $node_type = preg_replace('/^comment_node_/', '', $node_type);
@@ -134,7 +134,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
     // Check if comments are allowed on this content type in node type settings.
     $node_type = node_type_load($node->type);
     if ($node_type) {
-      $comment_setting = isset($node_type->settings['comment_default']) ? $node_type->settings['comment_default'] : COMMENT_NODE_OPEN;
+      $comment_setting = $node_type->settings['comment_default'] ?? COMMENT_NODE_OPEN;
       if ($comment_setting == COMMENT_NODE_HIDDEN) {
         throw new FeedsValidationException(t('Cannot create comment: Comments are hidden for content type "@type".', array('@type' => $node_type->label)));
       }
@@ -250,7 +250,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
       // (1 = all comments, 2 = replies to this comment only)
       // Our mapped value uses the same 0/1/2 convention as the {comment_notify}
       // table's 'notify' column, so we split it into the two properties here.
-      $notify_value = isset($comment->comment_notify_value) ? (int) $comment->comment_notify_value : 0;
+      $notify_value = (int) ($comment->comment_notify_value ?? 0);
 
       $comment->notify      = $notify_value > 0 ? 1 : 0;
       $comment->notify_type = $notify_value > 0 ? $notify_value : 1;
@@ -355,7 +355,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
     // {comment_notify} at this point, but it reads $comment->notify_type from
     // the entity object which may have been reset during comment_save(). We
     // overwrite the row here with correct values from our staging properties.
-    $notify_value = isset($comment->comment_notify_value) ? (int) $comment->comment_notify_value : 0;
+    $notify_value = (int) ($comment->comment_notify_value ?? 0);
 
     $notify_data = array(
       'cid'      => $comment->cid,
@@ -434,7 +434,7 @@ class FeedsCommentProcessor extends FeedsProcessor {
       '#title' => t('Comment input format'),
       '#description' => t('Text format applied to imported comment bodies.'),
       '#options' => $this->getAvailableTextFormats(),
-      '#default_value' => isset($this->config['input_format']) ? $this->config['input_format'] : 'filtered_html',
+      '#default_value' => $this->config['input_format'] ?? 'filtered_html',
     );
 
     $author = user_load($this->config['author']);
@@ -755,10 +755,8 @@ class FeedsCommentProcessor extends FeedsProcessor {
     if (empty($comment->subject)) {
       // Generate from the comment body if available.
       if (!empty($comment->comment_body)) {
-        $langcode = isset($comment->langcode) ? $comment->langcode : LANGUAGE_NONE;
-        $body_value = isset($comment->comment_body[$langcode][0]['value'])
-          ? $comment->comment_body[$langcode][0]['value']
-          : '';
+        $langcode = $comment->langcode ?? LANGUAGE_NONE;
+        $body_value = $comment->comment_body[$langcode][0]['value'] ?? '';
         $comment->subject = truncate_utf8(trim(decode_entities(strip_tags($body_value))), 29, TRUE);
       }
 

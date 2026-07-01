@@ -135,7 +135,7 @@ function feeds_comment_processor_importing($set = NULL) {
  *   the text format to use.
  */
 function feeds_comment_processor_set_comment_body_target(FeedsSource $source, $entity, $target, $value, array $mapping) {
-  $langcode = isset($entity->langcode) ? $entity->langcode : LANGUAGE_NONE;
+  $langcode = $entity->langcode ?? LANGUAGE_NONE;
 
   // Prefer a format specified in the mapping config; fall back to the
   // processor's configured format, then to 'filtered_html'.
